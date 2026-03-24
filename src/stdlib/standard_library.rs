@@ -63,10 +63,9 @@ pub fn tuple_get_builtin(env: &mut Environment<Expression>) -> Statement {
                 Expression::CString("tuple_get: index must be >= 0".to_string())
             } else {
                 let idx = i as usize;
-                items
-                    .get(idx)
-                    .cloned()
-                    .unwrap_or(Expression::CString("tuple_get: index out of bounds".to_string()))
+                items.get(idx).cloned().unwrap_or(Expression::CString(
+                    "tuple_get: index out of bounds".to_string(),
+                ))
             }
         }
         (Some(other), Some(Expression::CInt(_))) => Expression::CString(format!(

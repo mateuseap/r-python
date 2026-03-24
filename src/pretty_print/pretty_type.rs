@@ -30,7 +30,10 @@ impl ToDoc for Type {
 
             Type::TTuple(types) => {
                 let inner_docs = types.iter().map(|t| t.to_doc()).collect();
-                concat(text("Tuple["), concat(join(text(", "), inner_docs), text("]")))
+                concat(
+                    text("Tuple["),
+                    concat(join(text(", "), inner_docs), text("]")),
+                )
             }
 
             Type::TMaybe(t) => concat(text("Maybe["), concat(t.to_doc(), text("]"))),

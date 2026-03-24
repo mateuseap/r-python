@@ -564,7 +564,7 @@ pub fn eval_function_call(
                     "tuple_get" => {
                         if args.len() != 2 {
                             return Err(
-                                "[Runtime Error] tuple_get expects exactly 2 arguments".into(),
+                                "[Runtime Error] tuple_get expects exactly 2 arguments".into()
                             );
                         }
 
@@ -588,9 +588,7 @@ pub fn eval_function_call(
                         if let Statement::Return(expr) = stmt {
                             Ok(ExpressionResult::Value(*expr))
                         } else {
-                            Err(
-                                "[Runtime Error] tuple_get builtin did not return a value".into(),
-                            )
+                            Err("[Runtime Error] tuple_get builtin did not return a value".into())
                         }
                     }
 
