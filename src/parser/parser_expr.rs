@@ -119,6 +119,8 @@ fn parse_term(input: &str) -> IResult<&str, Expression> {
 fn parse_factor(input: &str) -> IResult<&str, Expression> {
     alt((
         parse_bool,
+        parse_maybe_result_constructors,
+        parse_error_handling_operations,
         parse_number,
         parse_string,
         parse_list,
@@ -126,6 +128,101 @@ fn parse_factor(input: &str) -> IResult<&str, Expression> {
         parse_var,
         parse_paren_or_tuple,
         parse_lambda,
+    ))(input)
+}
+
+fn parse_maybe_result_constructors(input: &str) -> IResult<&str, Expression> {
+    alt((
+        value(Expression::CNothing, keyword("Nothing")),
+        map(
+            tuple((
+                keyword("Just"),
+                multispace0,
+                char::<&str, Error<&str>>(LEFT_PAREN),
+                multispace0,
+                parse_expression,
+                multispace0,
+                char::<&str, Error<&str>>(RIGHT_PAREN),
+            )),
+            |(_, _, _, _, expr, _, _)| Expression::CJust(Box::new(expr)),
+        ),
+        map(
+            tuple((
+                keyword("Ok"),
+                multispace0,
+                char::<&str, Error<&str>>(LEFT_PAREN),
+                multispace0,
+                parse_expression,
+                multispace0,
+                char::<&str, Error<&str>>(RIGHT_PAREN),
+            )),
+            |(_, _, _, _, expr, _, _)| Expression::COk(Box::new(expr)),
+        ),
+        map(
+            tuple((
+                keyword("Err"),
+                multispace0,
+                char::<&str, Error<&str>>(LEFT_PAREN),
+                multispace0,
+                parse_expression,
+                multispace0,
+                char::<&str, Error<&str>>(RIGHT_PAREN),
+            )),
+            |(_, _, _, _, expr, _, _)| Expression::CErr(Box::new(expr)),
+        ),
+    ))(input)
+}
+
+fn parse_error_handling_operations(input: &str) -> IResult<&str, Expression> {
+    alt((
+        map(
+            tuple((
+                keyword("unwrap"),
+                multispace0,
+                char::<&str, Error<&str>>(LEFT_PAREN),
+                multispace0,
+                parse_expression,
+                multispace0,
+                char::<&str, Error<&str>>(RIGHT_PAREN),
+            )),
+            |(_, _, _, _, expr, _, _)| Expression::Unwrap(Box::new(expr)),
+        ),
+        map(
+            tuple((
+                keyword("tryUnwrap"),
+                multispace0,
+                char::<&str, Error<&str>>(LEFT_PAREN),
+                multispace0,
+                parse_expression,
+                multispace0,
+                char::<&str, Error<&str>>(RIGHT_PAREN),
+            )),
+            |(_, _, _, _, expr, _, _)| Expression::Propagate(Box::new(expr)),
+        ),
+        map(
+            tuple((
+                keyword("isNothing"),
+                multispace0,
+                char::<&str, Error<&str>>(LEFT_PAREN),
+                multispace0,
+                parse_expression,
+                multispace0,
+                char::<&str, Error<&str>>(RIGHT_PAREN),
+            )),
+            |(_, _, _, _, expr, _, _)| Expression::IsNothing(Box::new(expr)),
+        ),
+        map(
+            tuple((
+                keyword("isError"),
+                multispace0,
+                char::<&str, Error<&str>>(LEFT_PAREN),
+                multispace0,
+                parse_expression,
+                multispace0,
+                char::<&str, Error<&str>>(RIGHT_PAREN),
+            )),
+            |(_, _, _, _, expr, _, _)| Expression::IsError(Box::new(expr)),
+        ),
     ))(input)
 }
 
@@ -342,7 +439,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_parse_expression_real() {
         assert_eq!(
             parse_expression("3.14xyz"),
@@ -356,13 +452,23 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_parse_expression_errors() {
-        // Doesn't start with a number
-        assert!(parse_expression("hello").is_err());
+        // Empty input should fail
+        assert!(parse_expression("").is_err());
 
-        // Not a valid number
-        assert!(parse_expression("12.34.56").is_err());
+        // Tokens that cannot start an expression should fail
+        assert!(parse_expression(")").is_err());
+        assert!(parse_expression(",").is_err());
+        assert!(parse_expression("]").is_err());
+
+        // Ambiguous/invalid number forms may parse a prefix and leave remainder.
+        match parse_expression("12.34.56") {
+            Err(_) => {}
+            Ok((rest, _)) => assert!(
+                !rest.trim().is_empty(),
+                "expected leftover input for invalid numeric form"
+            ),
+        }
     }
 
     #[test]
@@ -483,6 +589,49 @@ mod tests {
         } else {
             panic!("Expected ListValue expression");
         }
+    }
+
+    #[test]
+    fn test_parse_nothing_constructor() {
+        let input = "Nothing";
+        let result = parse_expression(input);
+        assert_eq!(result, Ok(("", Expression::CNothing)));
+    }
+
+    #[test]
+    fn test_parse_just_constructor() {
+        let input = "Just(1)";
+        let result = parse_expression(input);
+        assert_eq!(
+            result,
+            Ok(("", Expression::CJust(Box::new(Expression::CInt(1)))))
+        );
+    }
+
+    #[test]
+    fn test_parse_ok_constructor() {
+        let input = "Ok(\"ok\")";
+        let result = parse_expression(input);
+        assert_eq!(
+            result,
+            Ok((
+                "",
+                Expression::COk(Box::new(Expression::CString("ok".to_string())))
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_err_constructor() {
+        let input = "Err(\"bad\")";
+        let result = parse_expression(input);
+        assert_eq!(
+            result,
+            Ok((
+                "",
+                Expression::CErr(Box::new(Expression::CString("bad".to_string())))
+            ))
+        );
     }
 }
 

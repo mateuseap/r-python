@@ -102,14 +102,14 @@ pub enum Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::TInteger => write!(f, "int"),
-            Type::TBool => write!(f, "bool"),
-            Type::TReal => write!(f, "real"),
-            Type::TString => write!(f, "string"),
-            Type::TVoid => write!(f, "void"),
-            Type::TAny => write!(f, "any"),
+            Type::TInteger => write!(f, "Int"),
+            Type::TBool => write!(f, "Boolean"),
+            Type::TReal => write!(f, "Real"),
+            Type::TString => write!(f, "String"),
+            Type::TVoid => write!(f, "Unit"),
+            Type::TAny => write!(f, "Any"),
 
-            Type::TList(inner) => write!(f, "[{}]", inner),
+            Type::TList(inner) => write!(f, "List[{}]", inner),
 
             Type::TTuple(elements) => {
                 let types = elements
@@ -117,12 +117,12 @@ impl fmt::Display for Type {
                     .map(|t| t.to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "({})", types)
+                write!(f, "Tuple[{}]", types)
             }
 
-            Type::TMaybe(inner) => write!(f, "Maybe<{}>", inner),
+            Type::TMaybe(inner) => write!(f, "Maybe[{}]", inner),
 
-            Type::TResult(ok, err) => write!(f, "Result<{}, {}>", ok, err),
+            Type::TResult(ok, err) => write!(f, "Result[{}, {}]", ok, err),
 
             Type::TFunction(ret, params) => {
                 let params_str = params

@@ -1,0 +1,79 @@
+# Run ALL Beecrowd tests (24 problems)
+cargo test beecrowd -- --nocapture
+
+# Run individual solutions:
+
+# 1000 - Hello World (no input)
+cargo run -- tests/fixtures/beecrowd/1000/solution.rpy
+
+# 1001 - Extremely Basic (sum two numbers)
+cargo run -- tests/fixtures/beecrowd/1001/solution.rpy < tests/fixtures/beecrowd/1001/input_1001.txt
+
+# 1005 - Average 1 (weighted average with real numbers)
+cargo run -- tests/fixtures/beecrowd/1005/solution.rpy < tests/fixtures/beecrowd/1005/input_1005.txt
+
+# 1019 - Time Conversion (seconds to H:M:S)
+cargo run -- tests/fixtures/beecrowd/1019/solution.rpy < tests/fixtures/beecrowd/1019/input_1019.txt
+
+# 1037 - Interval (elif chain with ranges)
+cargo run -- tests/fixtures/beecrowd/1037/solution.rpy < tests/fixtures/beecrowd/1037/input_1037.txt
+
+# 1049 - Animal (nested if/else with string comparison)
+cargo run -- tests/fixtures/beecrowd/1049/solution.rpy < tests/fixtures/beecrowd/1049/input_1049.txt
+
+# 1052 - Month (12-way elif chain)
+cargo run -- tests/fixtures/beecrowd/1052/solution.rpy < tests/fixtures/beecrowd/1052/input_1052.txt
+
+# 1059 - Even Numbers (while loop, no input)
+cargo run -- tests/fixtures/beecrowd/1059/solution.rpy
+
+# 1071 - Sum of Odd Numbers (while loop with accumulator)
+cargo run -- tests/fixtures/beecrowd/1071/solution.rpy < tests/fixtures/beecrowd/1071/input_1071.txt
+
+# 1078 - Multiplication Table (for loop over list)
+cargo run -- tests/fixtures/beecrowd/1078/solution.rpy < tests/fixtures/beecrowd/1078/input_1078.txt
+
+# 1153 - Simple Factorial (RECURSION!)
+cargo run -- tests/fixtures/beecrowd/1153/solution.rpy < tests/fixtures/beecrowd/1153/input_1153.txt
+
+# 1002 - Area of Circle (use of to_string_fixed)
+cargo run -- tests/fixtures/beecrowd/1002/solution.rpy < tests/fixtures/beecrowd/1002/input_1002.txt
+
+# 1010 - String Length (len on strings)
+cargo run -- tests/fixtures/beecrowd/1010/solution.rpy < tests/fixtures/beecrowd/1010/input_1010.txt
+
+# 1018 - Banknotes (greedy decomposition)
+cargo run -- tests/fixtures/beecrowd/1018/solution.rpy < tests/fixtures/beecrowd/1018/input_1018.txt
+
+# 1028 - To Real (to_real conversion)
+cargo run -- tests/fixtures/beecrowd/1028/solution.rpy < tests/fixtures/beecrowd/1028/input_1028.txt
+
+# 1035 - Selection Test (and + comparisons)
+cargo run -- tests/fixtures/beecrowd/1035/solution.rpy < tests/fixtures/beecrowd/1035/input_1035.txt
+
+# 1036 - Fuel Spent (or operator)
+cargo run -- tests/fixtures/beecrowd/1036/solution.rpy < tests/fixtures/beecrowd/1036/input_1036.txt
+
+# 1038 - Snack (True/False literals)
+cargo run -- tests/fixtures/beecrowd/1038/solution.rpy < tests/fixtures/beecrowd/1038/input_1038.txt
+
+# 1046 - Game Time (to_int conversion)
+cargo run -- tests/fixtures/beecrowd/1046/solution.rpy < tests/fixtures/beecrowd/1046/input_1046.txt
+
+# 1050 - DDD (function + multi-branch elif)
+cargo run -- tests/fixtures/beecrowd/1050/solution.rpy < tests/fixtures/beecrowd/1050/input_1050.txt
+
+# 1051 - Join Words (join on list of strings)
+cargo run -- tests/fixtures/beecrowd/1051/solution.rpy < tests/fixtures/beecrowd/1051/input_1051.txt
+
+# 1060 - Positive Numbers (continue in while loop)
+cargo run -- tests/fixtures/beecrowd/1060/solution.rpy < tests/fixtures/beecrowd/1060/input_1060.txt
+
+# 1101 - Sequence Sum (tuple + for over tuple)
+cargo run -- tests/fixtures/beecrowd/1101/solution.rpy < tests/fixtures/beecrowd/1101/input_1101.txt
+
+# 1114 - Fixed Password (while True + break)
+cargo run -- tests/fixtures/beecrowd/1114/solution.rpy < tests/fixtures/beecrowd/1114/input_1114.txt
+
+# Show the hello_io demo with all features
+cargo run -- examples/hello_io.rpy

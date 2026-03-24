@@ -163,4 +163,45 @@ val contents2 = open(test_file, "r");
 var _ = print("After append: ");
 var _ = print_line(contents2);
 
+var _ = print_line("=== 16. Explicit Typing & Error Handling ===");
+def print_typed_list(lst: List[Int]) -> Int:
+    var _ = print("Typed List[Int]: ");
+    var _ = print_line(lst);
+    return 0;
+end;
+
+def print_typed_tuple(tup: Tuple[Int, String]) -> Int:
+    var _ = print("Typed Tuple[Int, String]: ");
+    var _ = print_line(tup);
+    return 0;
+end;
+
+def higher_order(func: fn(Int) -> Int, value: Int) -> Int:
+    return func(value);
+end;
+
+def duplicate(x: Int) -> Int:
+    return x * 2;
+end;
+
+var _ = print_typed_list([100, 200, 300]);
+var _ = print_typed_tuple((404, "Not Found"));
+
+var _ = print("higher_order(duplicate, 21): ");
+var _ = print_line(higher_order(duplicate, 21));
+
+val maybe_val = Nothing;
+var _ = print("isNothing(Nothing)? ");
+var _ = print_line(isNothing(maybe_val));
+
+val ok_val = Ok(999);
+var _ = print("isError(Ok(999))? ");
+var _ = print_line(isError(ok_val));
+var _ = print("unwrap(Ok(999)): ");
+var _ = print_line(unwrap(ok_val));
+
+val err_val = Err("boom");
+var _ = print("isError(Err(boom))? ");
+var _ = print_line(isError(err_val));
+
 var _ = print_line("=== Demo Complete ===");

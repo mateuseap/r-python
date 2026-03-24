@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, char, digit1, multispace0},
-    combinator::{map, opt, recognize},
+    combinator::{map, recognize},
     multi::{many0, many1, separated_list0, separated_list1},
     sequence::{preceded, tuple},
     IResult,
@@ -53,25 +53,27 @@ fn parse_basic_types(input: &str) -> IResult<&str, Type> {
 fn parse_list_type(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
+            preceded(multispace0, keyword("List")),
             preceded(multispace0, char(LEFT_BRACKET)),
             preceded(multispace0, parse_type),
             preceded(multispace0, char(RIGHT_BRACKET)),
         )),
-        |(_, t, _)| Type::TList(Box::new(t)),
+        |(_, _, t, _)| Type::TList(Box::new(t)),
     )(input)
 }
 
 fn parse_tuple_type(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
-            preceded(multispace0, char(LEFT_PAREN)),
+            preceded(multispace0, keyword("Tuple")),
+            preceded(multispace0, char(LEFT_BRACKET)),
             preceded(
                 multispace0,
                 separated_list1(separator(COMMA_SYMBOL), parse_type),
             ),
-            preceded(multispace0, char(RIGHT_PAREN)),
+            preceded(multispace0, char(RIGHT_BRACKET)),
         )),
-        |(_, ts, _)| Type::TTuple(ts),
+        |(_, _, ts, _)| Type::TTuple(ts),
     )(input)
 }
 
@@ -104,6 +106,7 @@ fn parse_result_type(input: &str) -> IResult<&str, Type> {
 pub fn parse_function_type(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
+            preceded(multispace0, keyword("fn")),
             preceded(multispace0, char(LEFT_PAREN)),
             preceded(
                 multispace0,
@@ -113,7 +116,7 @@ pub fn parse_function_type(input: &str) -> IResult<&str, Type> {
             preceded(multispace0, tag(FUNCTION_ARROW)),
             preceded(multispace0, parse_type),
         )),
-        |(_, t_args, _, _, t_ret)| Type::TFunction(Box::new(t_ret), t_args),
+        |(_, _, t_args, _, _, t_ret)| Type::TFunction(Box::new(t_ret), t_args),
     )(input)
 }
 
@@ -136,13 +139,9 @@ fn parse_adt_cons(input: &str) -> IResult<&str, ValueConstructor> {
     let (input, _) = multispace0(input)?;
     // Use constructor_name instead of identifier to allow keywords like Just/Nothing
     let (input, name) = constructor_name(input)?;
-    // Use parse_basic_types to avoid infinite recursion through parse_type -> parse_adt_type
-    let (input, maybe_type) = opt(preceded(multispace0, parse_basic_types))(input)?;
-
-    let types = match maybe_type {
-        Some(t) => vec![t],
-        None => Vec::new(),
-    };
+    // Use parse_basic_types to avoid infinite recursion through parse_type -> parse_adt_type.
+    // Allow zero or more field types (e.g., `| Rectangle Int Int`).
+    let (input, types) = many0(preceded(multispace0, parse_basic_types))(input)?;
 
     Ok((input, ValueConstructor::new(name.to_string(), types)))
 }
@@ -168,7 +167,7 @@ mod tests {
     #[test]
     fn test_parse_list_type() {
         assert_eq!(
-            parse_list_type("[Int]"),
+            parse_list_type("List[Int]"),
             Ok(("", Type::TList(Box::new(Type::TInteger))))
         );
     }
@@ -176,7 +175,7 @@ mod tests {
     #[test]
     fn test_parse_tuple_type() {
         assert_eq!(
-            parse_tuple_type("(Int, Real)"),
+            parse_tuple_type("Tuple[Int, Real]"),
             Ok(("", Type::TTuple(vec![Type::TInteger, Type::TReal])))
         );
     }
@@ -203,7 +202,7 @@ mod tests {
     #[test]
     fn test_parse_function_type() {
         assert_eq!(
-            parse_function_type("(Int, Boolean) -> String"),
+            parse_function_type("fn(Int, Boolean) -> String"),
             Ok((
                 "",
                 Type::TFunction(Box::new(Type::TString), vec![Type::TInteger, Type::TBool])

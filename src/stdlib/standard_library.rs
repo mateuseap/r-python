@@ -18,6 +18,10 @@ pub fn get_metabuiltins_table() -> &'static HashMap<String, MetaBuiltinStmt> {
         table.insert("print".to_string(), print_builtin as MetaBuiltinStmt);
         table.insert("open".to_string(), open_builtin as MetaBuiltinStmt);
         table.insert(
+            "tuple_get".to_string(),
+            tuple_get_builtin as MetaBuiltinStmt,
+        );
+        table.insert(
             "input_int".to_string(),
             input_int_builtin as MetaBuiltinStmt,
         );
@@ -49,6 +53,37 @@ pub fn get_metabuiltins_table() -> &'static HashMap<String, MetaBuiltinStmt> {
     })
 }
 
+pub fn tuple_get_builtin(env: &mut Environment<Expression>) -> Statement {
+    let value = env.lookup(&"value".to_string()).map(|(_, v)| v.clone());
+    let index = env.lookup(&"index".to_string()).map(|(_, v)| v.clone());
+
+    let result = match (value, index) {
+        (Some(Expression::Tuple(items)), Some(Expression::CInt(i))) => {
+            if i < 0 {
+                Expression::CString("tuple_get: index must be >= 0".to_string())
+            } else {
+                let idx = i as usize;
+                items
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or(Expression::CString("tuple_get: index out of bounds".to_string()))
+            }
+        }
+        (Some(other), Some(Expression::CInt(_))) => Expression::CString(format!(
+            "tuple_get: expected tuple as first argument, found {:?}",
+            other
+        )),
+        (Some(_), Some(other_idx)) => Expression::CString(format!(
+            "tuple_get: expected int index as second argument, found {:?}",
+            other_idx
+        )),
+        (None, _) => Expression::CString("tuple_get: missing argument 'value'".to_string()),
+        (_, None) => Expression::CString("tuple_get: missing argument 'index'".to_string()),
+    };
+
+    Statement::Return(Box::new(result))
+}
+
 pub fn input_builtin(env: &mut Environment<Expression>) -> Statement {
     let prompt = match env.lookup(&"prompt".to_string()) {
         Some((_, Expression::CString(s))) => s.clone(),
@@ -68,12 +103,7 @@ pub fn print_builtin(env: &mut Environment<Expression>) -> Statement {
         .lookup(&"value".to_string())
         .map(|(_, v)| v)
         .unwrap_or(Expression::CString("".to_string()));
-    match value {
-        Expression::CString(s) => print!("{}", s),
-        Expression::CInt(i) => print!("{}", i),
-        Expression::CReal(f) => print!("{}", f),
-        _ => print!("{:?}", value),
-    }
+    print!("{}", expr_to_string(&value));
     use std::io::{self, Write};
     io::stdout().flush().unwrap();
     Statement::Return(Box::new(Expression::CVoid))
@@ -119,6 +149,10 @@ pub fn input_real_builtin(env: &mut Environment<Expression>) -> Statement {
     }
 }
 
+fn escape_string_literal(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 fn expr_to_string(expr: &Expression) -> String {
     match expr {
         Expression::CString(s) => s.clone(),
@@ -127,7 +161,37 @@ fn expr_to_string(expr: &Expression) -> String {
         Expression::CTrue => "True".to_string(),
         Expression::CFalse => "False".to_string(),
         Expression::CVoid => "".to_string(),
+
+        Expression::ListValue(items) => {
+            let inner = items
+                .iter()
+                .map(expr_to_literal)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("[{inner}]")
+        }
+        Expression::Tuple(items) => {
+            let inner = items
+                .iter()
+                .map(expr_to_literal)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({inner})")
+        }
+
+        Expression::CJust(e) => format!("Just({})", expr_to_literal(e)),
+        Expression::CNothing => "Nothing".to_string(),
+        Expression::COk(e) => format!("Ok({})", expr_to_literal(e)),
+        Expression::CErr(e) => format!("Err({})", expr_to_literal(e)),
+
         other => format!("{:?}", other),
+    }
+}
+
+fn expr_to_literal(expr: &Expression) -> String {
+    match expr {
+        Expression::CString(s) => format!("\"{}\"", escape_string_literal(s)),
+        _ => expr_to_string(expr),
     }
 }
 
@@ -173,12 +237,7 @@ pub fn print_line_builtin(env: &mut Environment<Expression>) -> Statement {
         .map(|(_, v)| v)
         .unwrap_or(Expression::CString("".to_string()));
 
-    match value {
-        Expression::CString(s) => println!("{}", s),
-        Expression::CInt(i) => println!("{}", i),
-        Expression::CReal(f) => println!("{}", f),
-        _ => println!("{:?}", value),
-    }
+    println!("{}", expr_to_string(&value));
 
     Statement::Return(Box::new(Expression::CVoid))
 }
@@ -422,8 +481,8 @@ mod tests {
         let table = get_metabuiltins_table();
         assert_eq!(
             table.len(),
-            13,
-            "The table must contain exactly 13 functions"
+            14,
+            "The table must contain exactly 14 functions"
         );
     }
 
@@ -454,7 +513,8 @@ mod tests {
         assert!(keys.contains(&&"join".to_string()));
         assert!(keys.contains(&&"to_int".to_string()));
         assert!(keys.contains(&&"to_real".to_string()));
-        assert_eq!(keys.len(), 13, "The table must contain only 13 keys");
+        assert!(keys.contains(&&"tuple_get".to_string()));
+        assert_eq!(keys.len(), 14, "The table must contain only 14 keys");
     }
 
     #[test]

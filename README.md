@@ -163,11 +163,14 @@ asserttrue(result == 120, "5! should be 120");
 Anonymous functions can be assigned to variables or passed as arguments.
 
 ```text
-val add = lambda (a: Int, b: Int) -> Int: return a + b end;
-val sum = add(2, 3);
+def apply(f: fn(Int, Int) -> Int, a: Int, b: Int) -> Int:
+    return f(a, b);
+end;
+
+val sum = apply(lambda (a: Int, b: Int) -> Int: return a + b end, 2, 3);
 ```
 
-> **Current limitation:** Lambdas are parsed correctly but not yet fully implemented in the interpreter.
+> **Current limitation:** Lambdas are supported as first-class function values (especially when passed as arguments to functions expecting a `fn(...) -> ...` type), but calling a lambda *via a variable name* is not fully supported yet in all contexts. Prefer `def` for named functions, or pass lambdas directly as arguments.
 
 ---
 
@@ -177,13 +180,16 @@ Metabuiltins are functions implemented in Rust and exposed to user code. They ha
 
 ### I/O
 
-| Function                  | Description                                      |
-|---------------------------|--------------------------------------------------|
-| `input(prompt?)`          | Read a line from stdin; optional prompt string.  |
-| `input_int(prompt?)`      | Read and parse an integer from stdin.            |
-| `input_real(prompt?)`     | Read and parse a real number from stdin.         |
-| `print(value)`            | Print `value` without trailing newline.          |
-| `print_line(value)`       | Print `value` followed by a newline.             |
+| Function                  | Description                                                    |
+|---------------------------|----------------------------------------------------------------|
+| `input()`                 | Read a line from stdin. Returns a `String`.                    |
+| `input(prompt)`           | Print `prompt`, then read a line from stdin.                   |
+| `input_int()`             | Read and parse an integer from stdin.                          |
+| `input_int(prompt)`       | Print `prompt`, then read and parse an integer.                |
+| `input_real()`            | Read and parse a real number from stdin.                       |
+| `input_real(prompt)`      | Print `prompt`, then read and parse a real number.             |
+| `print(value)`            | Print `value` without trailing newline.                        |
+| `print_line(value)`       | Print `value` followed by a newline.                           |
 
 ### Conversion
 
@@ -202,11 +208,19 @@ Metabuiltins are functions implemented in Rust and exposed to user code. They ha
 | `join(values: List[String], sep)` | Join a list of strings with a separator.                   |
 | `len(value)`                      | Return the length of a string, list, or tuple.             |
 
+### Tuples
+
+| Function                  | Description |
+|--------------------------|-------------|
+| `tuple_get(value, index)` | Return the element at `index` from a tuple (or an error string on invalid input). |
+
 ### Files
 
 | Function                      | Description                                                       |
 |-------------------------------|-------------------------------------------------------------------|
-| `open(path, mode, content)` | Open a file. Modes: `r` (read), `w` (write), `a` (append).        |
+| `open(path, "r")`             | Read and return the contents of `path`.                           |
+| `open(path, "w", content)`    | Write `content` to `path`, overwriting existing content.          |
+| `open(path, "a", content)`    | Append `content` to `path`.                                       |
 
 ---
 
@@ -226,7 +240,7 @@ RPython provides two monadic types for representing optional or fallible values:
 - `unwrap(value)` — extracts the inner value (panics if `Nothing` or `Err`)
 - `tryUnwrap(value)` — extracts or propagates errors automatically
 
-> **Current limitation:** The parser does not yet support `Just()`, `Nothing`, `Ok()`, and `Err()` as expression syntax. These types exist in the AST and type system, and are used internally by the interpreter and type checker. Parser support for constructing these values from source code is planned for a future release.
+> Note: `Just(value)`, `Nothing`, `Ok(value)`, and `Err(error)` are supported as expression syntax.
 
 ---
 
@@ -293,7 +307,7 @@ src/
 - **`type_checker/`** — Validates types; checks function signatures and return types.
 - **`interpreter/statement_execute.rs`** — Executes statements; handles loops with `break`/`continue`.
 - **`interpreter/expression_eval.rs`** — Evaluates expressions; dispatches metabuiltin calls.
-- **`stdlib/standard_library.rs`** — Implements 13 metabuiltins.
+- **`stdlib/standard_library.rs`** — Implements the metabuiltins table and its built-in functions.
 - **`pretty_print/`** — AST-to-source formatter (see below).
 
 ### Pretty Printer
@@ -376,7 +390,7 @@ The interpreter reads from stdin and writes to stdout, making it suitable for au
 4. **No interactive REPL:** only file-based execution is supported.
 5. **Limited error messages:** parser and type checker errors are functional but not always user-friendly.
 6. **No tail-call optimization:** deep recursion may overflow the stack.
-7. **Maybe/Result constructors:** `Just()`, `Nothing`, `Ok()`, `Err()` cannot be parsed from source code yet.
+7. **Maybe/Result constructors:** supported as expression syntax, but values cannot be destructured without pattern matching.
 8. **Small standard library:** only a small set of metabuiltins is available (basic I/O, conversions, simple string/list helpers); there are no rich libraries for math, dates/times, networking, etc.
 9. **No exceptions:** there is no `try`/`catch` mechanism or exception hierarchy; errors are represented via `Maybe`/`Result` types or abort execution with an error message.
 10. **No objects or methods:** there are no classes, interfaces, or method calls; programs are written with functions, lists/tuples, and algebraic data types.

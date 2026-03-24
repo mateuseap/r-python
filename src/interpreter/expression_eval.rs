@@ -560,6 +560,40 @@ pub fn eval_function_call(
                 let mut meta_env: Environment<Expression> = Environment::new();
 
                 match func_name.as_str() {
+                    // tuple_get(value, index) -> any (element) or error string
+                    "tuple_get" => {
+                        if args.len() != 2 {
+                            return Err(
+                                "[Runtime Error] tuple_get expects exactly 2 arguments".into(),
+                            );
+                        }
+
+                        let value = match eval(args[0].clone(), env)? {
+                            ExpressionResult::Value(v) => v,
+                            ExpressionResult::Propagate(e) => {
+                                return Ok(ExpressionResult::Propagate(e))
+                            }
+                        };
+                        let index = match eval(args[1].clone(), env)? {
+                            ExpressionResult::Value(v) => v,
+                            ExpressionResult::Propagate(e) => {
+                                return Ok(ExpressionResult::Propagate(e))
+                            }
+                        };
+
+                        meta_env.map_variable("value".to_string(), false, value);
+                        meta_env.map_variable("index".to_string(), false, index);
+
+                        let stmt = meta_fn(&mut meta_env);
+                        if let Statement::Return(expr) = stmt {
+                            Ok(ExpressionResult::Value(*expr))
+                        } else {
+                            Err(
+                                "[Runtime Error] tuple_get builtin did not return a value".into(),
+                            )
+                        }
+                    }
+
                     // input([prompt]) -> String
                     "input" => {
                         if let Some(prompt_expr) = args.get(0) {

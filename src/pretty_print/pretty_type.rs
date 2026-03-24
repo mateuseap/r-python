@@ -26,11 +26,11 @@ impl ToDoc for Type {
             Type::TAny => text("Any"),
 
             // Tipos complexos são construídos recursivamente.
-            Type::TList(t) => concat(text("["), concat(t.to_doc(), text("]"))),
+            Type::TList(t) => concat(text("List["), concat(t.to_doc(), text("]"))),
 
             Type::TTuple(types) => {
                 let inner_docs = types.iter().map(|t| t.to_doc()).collect();
-                concat(text("("), concat(join(text(", "), inner_docs), text(")")))
+                concat(text("Tuple["), concat(join(text(", "), inner_docs), text("]")))
             }
 
             Type::TMaybe(t) => concat(text("Maybe["), concat(t.to_doc(), text("]"))),
@@ -50,7 +50,7 @@ impl ToDoc for Type {
 
                 // Agrupa os parâmetros: se não couberem em uma linha, serão quebrados e indentados.
                 let params_doc = group(concat(
-                    text("("),
+                    text("fn("),
                     concat(
                         nest(4, concat(line(), join(separator, params_docs))),
                         concat(line(), text(")")),
@@ -116,10 +116,10 @@ mod tests {
     #[test]
     fn test_list_and_tuple_doc() {
         let list_type = Type::TList(Box::new(Type::TList(Box::new(Type::TString))));
-        assert_eq!(pretty(80, &list_type.to_doc()), "[[String]]");
+        assert_eq!(pretty(80, &list_type.to_doc()), "List[List[String]]");
 
         let tuple_type = Type::TTuple(vec![Type::TInteger, Type::TReal]);
-        assert_eq!(pretty(80, &tuple_type.to_doc()), "(Int, Real)");
+        assert_eq!(pretty(80, &tuple_type.to_doc()), "Tuple[Int, Real]");
     }
 
     #[test]
@@ -134,10 +134,10 @@ mod tests {
         );
         let doc = func_type.to_doc();
 
-        let expected_wide = "( Int, [Boolean], Real ) -> String";
+        let expected_wide = "fn( Int, List[Boolean], Real ) -> String";
         assert_eq!(pretty(80, &doc), expected_wide);
 
-        let expected_narrow = "(\n    Int,\n    [Boolean],\n    Real\n) -> String";
+        let expected_narrow = "fn(\n    Int,\n    List[Boolean],\n    Real\n) -> String";
         assert_eq!(pretty(20, &doc), expected_narrow);
     }
 
@@ -155,7 +155,7 @@ mod tests {
         );
         let doc = adt.to_doc();
 
-        let expected = "data MyList:\n    | Cons Int [Int]\n    | Nil\nend";
+        let expected = "data MyList:\n    | Cons Int List[Int]\n    | Nil\nend";
         assert_eq!(pretty(80, &doc), expected);
     }
 }
