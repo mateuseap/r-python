@@ -546,3 +546,125 @@ assert(area_c == 75, "area of circle with radius 5 should be 75");"#;
         assert_ne!(rest.trim(), "");
     }
 }
+
+// Class Declaration Tests (parser phase only: no type checking or execution)
+mod class_tests {
+    use super::*;
+
+    fn field(name: &str, ty: Type, mutable: bool, init: Expression) -> FieldDeclaration {
+        FieldDeclaration {
+            name: name.to_string(),
+            field_type: ty,
+            mutable,
+            initializer: Box::new(init),
+        }
+    }
+
+    #[test]
+    fn test_empty_class() {
+        let (rest, result) = parse_statement("class Empty: end").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            result,
+            Statement::ClassDef(Class {
+                name: "Empty".to_string(),
+                fields: vec![],
+                methods: vec![],
+            })
+        );
+    }
+
+    #[test]
+    fn test_class_with_val_and_var_fields() {
+        let input = "class Point:\n    val x: Int = 0;\n    var label: String = \"p\";\nend";
+        let (rest, result) = parse_statement(input).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            result,
+            Statement::ClassDef(Class {
+                name: "Point".to_string(),
+                fields: vec![
+                    field("x", Type::TInteger, false, Expression::CInt(0)),
+                    field(
+                        "label",
+                        Type::TString,
+                        true,
+                        Expression::CString("p".to_string())
+                    ),
+                ],
+                methods: vec![],
+            })
+        );
+    }
+
+    #[test]
+    fn test_class_with_method() {
+        let input = "class Counter:\n    var n: Int = 0;\n    def get(self: Counter) -> Int:\n        return 1;\n    end;\nend";
+        let (rest, result) = parse_statement(input).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            result,
+            Statement::ClassDef(Class {
+                name: "Counter".to_string(),
+                fields: vec![field("n", Type::TInteger, true, Expression::CInt(0))],
+                methods: vec![Function {
+                    name: "get".to_string(),
+                    kind: Type::TInteger,
+                    params: vec![FormalArgument::new(
+                        "self".to_string(),
+                        Type::TClass("Counter".to_string())
+                    )],
+                    body: Some(Box::new(Statement::Block(vec![Statement::Return(
+                        Box::new(Expression::CInt(1))
+                    )]))),
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn test_class_example_file() {
+        let src = include_str!("../examples/classes/point_declaration.rpy");
+        let (rest, stmts) = parse(src).unwrap();
+        assert_eq!(rest, "");
+        match &stmts[..] {
+            [Statement::ClassDef(c)] => {
+                assert_eq!(c.name, "Point");
+                assert_eq!(c.fields.len(), 2);
+                let names: Vec<_> = c.methods.iter().map(|m| m.name.as_str()).collect();
+                assert_eq!(names, vec!["translate", "get_x"]);
+                assert_eq!(c.methods[0].params.len(), 3);
+            }
+            other => panic!("expected one ClassDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_class_declarations() {
+        let invalid = vec![
+            "class : end",                                       // missing name
+            "class if: end",                                     // keyword as name
+            "class P end",                                       // missing ':'
+            "class P: val x: Int = 0;",                          // missing 'end'
+            "class P: val x = 0; end",                           // field without type
+            "class P: x = 1; end",                               // statement not allowed in body
+            "class P: def f(a: Int) -> Int: return a; end; end", // method without self
+            "class P: def f() -> Int: return 1; end; end",       // method without params
+        ];
+        for input in invalid {
+            match parse_statement(input) {
+                Ok((_, Statement::ClassDef(c))) => {
+                    panic!("accepted invalid class {input:?}: {c:?}")
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn test_class_keyword_is_reserved() {
+        // `class` can no longer be used as an identifier.
+        assert!(parse_statement("class = 1").is_err());
+        assert!(parse_expression("class").is_err());
+    }
+}

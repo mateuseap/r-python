@@ -97,6 +97,8 @@ pub enum Type {
     TResult(Box<Type>, Box<Type>), // Ok, Error
     TAny,
     TAlgebraicData(Name, Vec<ValueConstructor>),
+    // Named class type, e.g. `self: Point` (parsed only; no semantics yet)
+    TClass(Name),
 }
 
 impl fmt::Display for Type {
@@ -136,6 +138,8 @@ impl fmt::Display for Type {
             Type::TAlgebraicData(name, _constructors) => {
                 write!(f, "{}", name)
             }
+
+            Type::TClass(name) => write!(f, "{}", name),
         }
     }
 }
@@ -152,6 +156,23 @@ impl ValueConstructor {
     pub fn new(name: Name, types: Vec<Type>) -> Self {
         ValueConstructor { name, types }
     }
+}
+
+// A field declared in a class body: `val x: Int = 0` or `var x: Int = 0`
+#[derive(Clone, Debug, PartialEq)]
+pub struct FieldDeclaration {
+    pub name: Name,
+    pub field_type: Type,
+    pub mutable: bool,
+    pub initializer: Box<Expression>,
+}
+
+// A class declaration: `class Name: <fields and methods> end`
+#[derive(Clone, Debug, PartialEq)]
+pub struct Class {
+    pub name: Name,
+    pub fields: Vec<FieldDeclaration>,
+    pub methods: Vec<Function>,
 }
 
 // Represents expressions in the AST
@@ -244,4 +265,6 @@ pub enum Statement {
     /// Avalia uma expressão apenas por seus efeitos colaterais (ex: chamada de função).
     ExprStmt(Box<Expression>),
     MetaStmt(String),
+    // Class declaration (parsed only; no type checking or execution yet)
+    ClassDef(Class),
 }
