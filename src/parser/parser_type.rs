@@ -25,7 +25,16 @@ pub fn parse_type(input: &str) -> IResult<&str, Type> {
         parse_result_type,
         parse_function_type,
         parse_adt_type,
+        parse_class_type,
     ))(input)
+}
+
+/// A bare identifier in type position names a class, e.g. `self: Point`.
+/// Tried last so built-in type names always win.
+fn parse_class_type(input: &str) -> IResult<&str, Type> {
+    map(preceded(multispace0, identifier), |name| {
+        Type::TClass(name.to_string())
+    })(input)
 }
 
 fn parse_basic_types(input: &str) -> IResult<&str, Type> {

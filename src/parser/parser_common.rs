@@ -43,6 +43,7 @@ pub const ASSERTFALSE_KEYWORD: &str = "assertfalse";
 pub const VAR_KEYWORD: &str = "var";
 pub const VAL_KEYWORD: &str = "val";
 pub const DEF_KEYWORD: &str = "def";
+pub const CLASS_KEYWORD: &str = "class";
 pub const TEST_KEYWORD: &str = "test";
 pub const LAMBDA_KEYWORD: &str = "lambda";
 pub const RET_KEYWORD: &str = "return";

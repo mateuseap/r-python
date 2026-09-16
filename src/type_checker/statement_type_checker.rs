@@ -28,6 +28,11 @@ pub fn check_stmt(
         Statement::For(var, expr, stmt) => check_for_stmt(var, expr, stmt, env),
         Statement::FuncDef(function) => check_func_def_stmt(function, env),
         Statement::TypeDeclaration(name, cons) => check_adt_declarations_stmt(name, cons, env),
+        // Classes are parsed only; type checking them is future work.
+        Statement::ClassDef(class) => Err(format!(
+            "[Type Error] classes are not supported yet (class '{}')",
+            class.name
+        )),
         Statement::Block(statements_vector) => check_block_statement(statements_vector, env),
         Statement::Return(exp) => check_return_stmt(exp, env),
         Statement::Break => Ok(env.clone()),

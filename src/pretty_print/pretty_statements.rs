@@ -255,6 +255,9 @@ impl ToDoc for Statement {
                 )
             }
 
+            // ponytail: placeholder only; full class pretty print is future work (after parser phase).
+            Statement::ClassDef(class) => text(format!("class {}: ... end", class.name)),
+
             // Statement de expressão: apenas imprime a expressão seguida de ';'
             Statement::ExprStmt(expr) => concat(expr.to_doc(), text(";")),
 
