@@ -652,11 +652,8 @@ mod class_tests {
             "class P: def f() -> Int: return 1; end; end",       // method without params
         ];
         for input in invalid {
-            match parse_statement(input) {
-                Ok((_, Statement::ClassDef(c))) => {
-                    panic!("accepted invalid class {input:?}: {c:?}")
-                }
-                _ => {}
+            if let Ok((_, Statement::ClassDef(c))) = parse_statement(input) {
+                panic!("accepted invalid class {input:?}: {c:?}")
             }
         }
     }
