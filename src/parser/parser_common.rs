@@ -67,6 +67,7 @@ pub const COLON_CHAR: char = ':';
 pub const PIPE_CHAR: char = '|';
 pub const SEMICOLON_CHAR: char = ';';
 pub const EQUALS_CHAR: char = '=';
+pub const DOT_CHAR: char = '.';
 
 /// Accepts any character except '"' and control characters (like \n, \t)
 pub fn is_string_char(c: char) -> bool {

@@ -665,3 +665,172 @@ mod class_tests {
         assert!(parse_expression("class").is_err());
     }
 }
+
+// Member Access Tests (parser phase only: no type checking or execution)
+mod member_access_tests {
+    use super::*;
+
+    fn var(n: &str) -> Box<Expression> {
+        Box::new(Expression::Var(n.to_string()))
+    }
+
+    #[test]
+    fn test_field_access() {
+        let (rest, e) = parse_expression("p.x").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(e, Expression::FieldAccess(var("p"), "x".to_string()));
+    }
+
+    #[test]
+    fn test_chained_access_is_left_associative() {
+        // a.b.c() == MethodCall(FieldAccess(a, b), c, [])
+        let (rest, e) = parse_expression("a.b.c()").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            e,
+            Expression::MethodCall(
+                Box::new(Expression::FieldAccess(var("a"), "b".to_string())),
+                "c".to_string(),
+                vec![]
+            )
+        );
+    }
+
+    #[test]
+    fn test_method_call_with_args() {
+        let (rest, e) = parse_expression("self.move(1, y)").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            e,
+            Expression::MethodCall(
+                var("self"),
+                "move".to_string(),
+                vec![Expression::CInt(1), Expression::Var("y".to_string())]
+            )
+        );
+    }
+
+    #[test]
+    fn test_member_access_binds_tighter_than_operators() {
+        let (rest, e) = parse_expression("p.x + f(1).y * 2").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            e,
+            Expression::Add(
+                Box::new(Expression::FieldAccess(var("p"), "x".to_string())),
+                Box::new(Expression::Mul(
+                    Box::new(Expression::FieldAccess(
+                        Box::new(Expression::FuncCall(
+                            "f".to_string(),
+                            vec![Expression::CInt(1)]
+                        )),
+                        "y".to_string()
+                    )),
+                    Box::new(Expression::CInt(2))
+                ))
+            )
+        );
+    }
+
+    #[test]
+    fn test_real_literal_is_not_member_access() {
+        assert_eq!(
+            parse_expression("2.5").unwrap(),
+            ("", Expression::CReal(2.5))
+        );
+    }
+
+    #[test]
+    fn test_field_assignment() {
+        let (rest, s) = parse_statement("self.a.b = 3").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            s,
+            Statement::FieldAssignment(
+                Box::new(Expression::FieldAccess(var("self"), "a".to_string())),
+                "b".to_string(),
+                Box::new(Expression::CInt(3))
+            )
+        );
+    }
+
+    #[test]
+    fn test_plain_assignment_unchanged() {
+        assert_eq!(
+            parse_statement("x = 1").unwrap(),
+            (
+                "",
+                Statement::Assignment("x".to_string(), Box::new(Expression::CInt(1)))
+            )
+        );
+    }
+
+    #[test]
+    fn test_method_call_statement() {
+        assert_eq!(
+            parse_statement("p.reset()").unwrap(),
+            (
+                "",
+                Statement::ExprStmt(Box::new(Expression::MethodCall(
+                    var("p"),
+                    "reset".to_string(),
+                    vec![]
+                )))
+            )
+        );
+    }
+
+    #[test]
+    fn test_invalid_member_syntax() {
+        // `p.` and `p.1` leave input unconsumed; `p.f() = 1` is not an assignment target.
+        for input in ["p.", "p.1", "p.if"] {
+            let (rest, _) = parse_expression(input).unwrap();
+            assert_ne!(rest, "", "should not fully consume {input:?}");
+        }
+        assert!(!matches!(
+            parse_statement("p.f() = 1"),
+            Ok((_, Statement::FieldAssignment(..)))
+        ));
+    }
+
+    #[test]
+    fn test_member_access_example_file() {
+        let src = include_str!("../examples/classes/member_access.rpy");
+        let (rest, stmts) = parse(src).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(stmts.len(), 4);
+        assert!(
+            matches!(&stmts[0], Statement::ValDeclaration(_, e) if matches!(**e, Expression::FieldAccess(..)))
+        );
+        assert!(matches!(stmts[1], Statement::FieldAssignment(..)));
+        assert!(
+            matches!(&stmts[2], Statement::ExprStmt(e) if matches!(**e, Expression::MethodCall(..)))
+        );
+        assert!(
+            matches!(&stmts[3], Statement::ValDeclaration(_, e) if matches!(**e, Expression::MethodCall(..)))
+        );
+    }
+}
+
+// Full proposal example (docs/PROPOSTA_CLASSES.md section 3.2): parse only.
+#[test]
+fn test_full_class_program_parses() {
+    let src = include_str!("../examples/classes/point_full.rpy");
+    let (rest, stmts) = parse(src).unwrap();
+    assert_eq!(rest, "");
+    assert_eq!(stmts.len(), 5);
+    let Statement::ClassDef(c) = &stmts[0] else {
+        panic!("expected ClassDef, got {:?}", stmts[0]);
+    };
+    assert_eq!(c.methods[0].name, "init");
+    let Some(body) = &c.methods[0].body else {
+        panic!("init has no body")
+    };
+    assert!(
+        matches!(&**body, Statement::Block(b) if matches!(b[0], Statement::FieldAssignment(..)))
+    );
+    // `Point()` is still an ordinary FuncCall at the parser level.
+    assert!(
+        matches!(&stmts[1], Statement::ValDeclaration(_, e) if matches!(&**e, Expression::FuncCall(n, a) if n == "Point" && a.is_empty()))
+    );
+}
