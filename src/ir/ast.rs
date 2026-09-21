@@ -232,6 +232,12 @@ pub enum Expression {
 
     // Constructor
     Constructor(Name, Vec<Box<Expression>>),
+
+    // Member access: `obj.field` (parsed only; no semantics yet)
+    FieldAccess(Box<Expression>, Name),
+
+    // Method call: `obj.method(args)` (parsed only; no semantics yet)
+    MethodCall(Box<Expression>, Name, Vec<Expression>),
 }
 
 // Represents statements in the AST
@@ -267,4 +273,6 @@ pub enum Statement {
     MetaStmt(String),
     // Class declaration (parsed only; no type checking or execution yet)
     ClassDef(Class),
+    // Field assignment: `obj.field = expr` (parsed only; no execution yet)
+    FieldAssignment(Box<Expression>, Name, Box<Expression>),
 }

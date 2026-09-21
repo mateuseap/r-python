@@ -29,6 +29,10 @@ pub fn check_stmt(
         Statement::FuncDef(function) => check_func_def_stmt(function, env),
         Statement::TypeDeclaration(name, cons) => check_adt_declarations_stmt(name, cons, env),
         // Classes are parsed only; type checking them is future work.
+        Statement::FieldAssignment(_, field, _) => Err(format!(
+            "[Type Error] field assignment is not supported yet ('.{}')",
+            field
+        )),
         Statement::ClassDef(class) => Err(format!(
             "[Type Error] classes are not supported yet (class '{}')",
             class.name

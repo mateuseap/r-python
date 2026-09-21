@@ -1,7 +1,7 @@
 // src/pretty_print/pretty_statements.rs
 
 use super::pretty_print::{concat, group, hardline, line, nest, nil, text, Doc, ToDoc};
-use crate::ir::ast::{FormalArgument, Function, Statement};
+use crate::ir::ast::{Expression, FormalArgument, Function, Statement};
 use std::rc::Rc;
 
 /// Função auxiliar para juntar uma lista de documentos (`Vec<Rc<Doc>>`)
@@ -257,6 +257,11 @@ impl ToDoc for Statement {
 
             // ponytail: placeholder only; full class pretty print is future work (after parser phase).
             Statement::ClassDef(class) => text(format!("class {}: ... end", class.name)),
+
+            Statement::FieldAssignment(obj, field, expr) => concat(
+                Expression::FieldAccess(obj.clone(), field.clone()).to_doc(),
+                concat(text(" = "), concat(expr.to_doc(), text(";"))),
+            ),
 
             // Statement de expressão: apenas imprime a expressão seguida de ';'
             Statement::ExprStmt(expr) => concat(expr.to_doc(), text(";")),

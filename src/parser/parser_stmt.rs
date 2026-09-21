@@ -19,7 +19,7 @@ use crate::parser::parser_common::{
     FOR_KEYWORD, FUNCTION_ARROW, IF_KEYWORD, IN_KEYWORD, LEFT_PAREN, RET_KEYWORD, RIGHT_PAREN,
     SEMICOLON_CHAR, TEST_KEYWORD, VAL_KEYWORD, VAR_KEYWORD, WHILE_KEYWORD,
 };
-use crate::parser::parser_expr::parse_expression;
+use crate::parser::parser_expr::{parse_expression, parse_factor};
 use crate::parser::parser_type::parse_type;
 
 pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
@@ -43,6 +43,7 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
         parse_break_statement,
         parse_continue_statement,
         // Fallbacks: assignment first, then bare expression statement
+        parse_field_assignment_statement,
         parse_assignment_statement,
         parse_expression_statement,
     ))(input)
@@ -120,6 +121,24 @@ fn parse_assignment_statement(input: &str) -> IResult<&str, Statement> {
         )),
         |(var, _, expr)| Statement::Assignment(var.to_string(), Box::new(expr)),
     )(input)
+}
+
+/// Parses `obj.field = expr`. The target must end in a field access;
+/// `obj.f() = 1` or `x = 1` are rejected here (the latter is a plain Assignment).
+fn parse_field_assignment_statement(input: &str) -> IResult<&str, Statement> {
+    let (rest, target) = parse_factor(input)?;
+    let (rest, _) = delimited(
+        multispace0,
+        char::<&str, Error<&str>>(EQUALS_CHAR),
+        multispace0,
+    )(rest)?;
+    let (rest, expr) = parse_expression(rest)?;
+    match target {
+        Expression::FieldAccess(obj, field) => {
+            Ok((rest, Statement::FieldAssignment(obj, field, Box::new(expr))))
+        }
+        _ => Err(Err::Error(Error::new(input, ErrorKind::Verify))),
+    }
 }
 
 fn parse_if_else_statement(input: &str) -> IResult<&str, Statement> {
