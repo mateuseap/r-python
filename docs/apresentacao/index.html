@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classes no RPython</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Design tokens. Cores oficiais do Manual de Identidade Visual
+   CIn-UFPE (ago. 2020): vermelho #DB1E2F (primária), vermelho
+   escuro #AF0421, preto #231F20, cinza claro #E0E1E0.
+   Tipografia institucional é Proxima Nova (licenciada); Figtree
+   é usada como substituta aberta de mesmo desenho geométrico.
+   ============================================================ */
+:root {
+  /* colors */
+  --cin-red: #DB1E2F;
+  --cin-red-dark: #AF0421;
+  --cin-black: #231F20;
+  --cin-gray: #E0E1E0;
+  --paper: #FFFFFF;
+  --paper-2: #F3F3F2;
+  --ink: var(--cin-black);
+  --ink-2: #5B5657;
+  --ink-3: #8C8788;
+  --line: var(--cin-gray);
+  --hl-now: rgba(219, 30, 47, .16);
+  --hl-done: rgba(35, 31, 32, .06);
+  --code-bg: #FAFAF9;
+
+  /* typography */
+  --font-sans: "Figtree", "Proxima Nova", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --fs-display: 112px;
+  --fs-h1: 64px;
+  --fs-h2: 40px;
+  --fs-lead: 30px;
+  --fs-body: 25px;
+  --fs-small: 19px;
+  --fs-code: 21px;
+  --lh-tight: 1.04;
+  --lh-body: 1.42;
+
+  /* spacing (8px grid) */
+  --sp-1: 8px; --sp-2: 16px; --sp-3: 24px; --sp-4: 32px;
+  --sp-6: 48px; --sp-8: 64px; --sp-10: 80px; --sp-12: 96px;
+
+  /* radius: código e painéis têm canto; estrutura é reta */
+  --r-0: 0; --r-1: 4px; --r-2: 10px;
+
+  /* motion */
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --dur-1: 160ms; --dur-2: 320ms; --dur-3: 560ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; }
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--cin-black);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- stage 16:9, escalado para qualquer tela ---------- */
+.viewport { position: fixed; inset: 0; }
+.deck {
+  position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px;
+  transform: translate(-50%, -50%) scale(var(--scale, 1)); transform-origin: center;
+  background: var(--paper);
+  overflow: hidden;
+}
+.slide {
+  position: absolute; inset: 0;
+  padding: var(--sp-10) var(--sp-12) var(--sp-12);
+  display: flex; flex-direction: column;
+  opacity: 0; visibility: hidden;
+  transform: translateX(24px);
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out), visibility 0s linear var(--dur-2);
+}
+.slide.active { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.slide.past { transform: translateX(-24px); }
+
+/* faixa vermelha à esquerda: assinatura visual recorrente */
+.slide::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px;
+  background: var(--cin-red);
+}
+.slide.inverse { background: var(--cin-red); color: #fff; }
+.slide.inverse::before { background: var(--cin-red-dark); }
+.slide.dark { background: var(--cin-black); color: #fff; }
+
+/* ---------- tipografia ---------- */
+h1 { font-size: var(--fs-h1); line-height: var(--lh-tight); font-weight: 800; letter-spacing: -.02em; max-width: 22ch; }
+h2 { font-size: var(--fs-h2); line-height: 1.12; font-weight: 700; letter-spacing: -.01em; }
+.display { font-size: var(--fs-display); line-height: .98; font-weight: 800; letter-spacing: -.035em; }
+.lead { font-size: var(--fs-lead); line-height: 1.34; color: var(--ink-2); max-width: 46ch; }
+.inverse .lead, .dark .lead { color: rgba(255,255,255,.86); }
+p, li { font-size: var(--fs-body); line-height: var(--lh-body); }
+.small { font-size: var(--fs-small); color: var(--ink-3); }
+.inverse .small, .dark .small { color: rgba(255,255,255,.7); }
+code, pre, .mono, .callstack, .ast, .grammar, .term { font-family: var(--font-mono); font-variant-ligatures: none; }
+p code, li code, td code { font-size: .86em; background: var(--paper-2); padding: 1px 6px; border-radius: var(--r-1); }
+.inverse p code, .dark p code, .dark li code { background: rgba(255,255,255,.12); }
+strong { font-weight: 700; }
+.red { color: var(--cin-red); }
+
+.head { margin-bottom: var(--sp-6); }
+.head .kicker { font-size: var(--fs-small); color: var(--cin-red); font-weight: 600; margin-bottom: var(--sp-2); }
+.inverse .head .kicker { color: #fff; opacity: .8; }
+
+/* ---------- layout helpers ---------- */
+.grow { flex: 1; min-height: 0; }
+.cols { display: grid; gap: var(--sp-8); grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; }
+.cols.w-60 { grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); }
+.cols.w-40 { grid-template-columns: minmax(0,1fr) minmax(0,1.4fr); }
+.stack > * + * { margin-top: var(--sp-3); }
+ul.clean { list-style: none; padding: 0; }
+ul.clean li { padding-left: 28px; position: relative; }
+ul.clean li + li { margin-top: var(--sp-2); }
+ul.clean li::before { content: ""; position: absolute; left: 0; top: .62em; width: 12px; height: 3px; background: var(--cin-red); }
+.inverse ul.clean li::before { background: #fff; }
+
+/* ---------- code ---------- */
+pre.code {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--r-2);
+  padding: var(--sp-3) var(--sp-4); font-size: var(--fs-code); line-height: 1.5;
+  white-space: pre; overflow: hidden; color: var(--ink);
+}
+pre.code.sm { font-size: 18px; line-height: 1.45; }
+pre.code.xs { font-size: 16px; line-height: 1.4; }
+.dark pre.code { background: #2E2A2B; border-color: #3B3637; color: #F2F2F2; }
+.k { color: var(--cin-red-dark); font-weight: 600; }   /* keyword */
+.t { color: #1F5FA8; }                                  /* type */
+.s { color: #2F7A3E; }                                  /* string */
+.c { color: var(--ink-3); font-style: italic; }         /* comment */
+.n { color: #8A4B00; }                                  /* number */
+.add { background: rgba(219,30,47,.09); box-shadow: inset 4px 0 0 var(--cin-red); display: inline-block; width: 100%; }
+.dark .k { color: #FF6B78; } .dark .t { color: #8CC4FF; } .dark .s { color: #9BDB9F; } .dark .c { color: #A59FA0; } .dark .n { color: #FFC07A; }
+
+/* ---------- pipeline ---------- */
+.pipeline { display: flex; align-items: stretch; gap: 0; margin-top: var(--sp-4); }
+.stage {
+  flex: 1; border: 2px solid var(--ink); padding: var(--sp-3);
+  position: relative; background: var(--paper);
+  transition: opacity var(--dur-2), background var(--dur-2), color var(--dur-2), border-color var(--dur-2);
+}
+.stage + .stage { border-left: none; }
+.stage h3 { font-size: 28px; font-weight: 700; }
+.stage p { font-size: var(--fs-small); color: var(--ink-2); margin-top: 6px; line-height: 1.35; }
+.stage .file { font-family: var(--font-mono); font-size: 15px; color: var(--ink-3); margin-top: var(--sp-2); }
+.stage.focus { background: var(--cin-red); color: #fff; border-color: var(--cin-red); }
+.stage.focus p, .stage.focus .file { color: rgba(255,255,255,.88); }
+.stage.focus code { background: rgba(255,255,255,.18); color: #fff; }
+.stage.dim { opacity: .32; }
+.pipeline.flow .stage::after {
+  content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px;
+  background: inherit; border-top: 2px solid; border-right: 2px solid; border-color: inherit;
+  transform: translateY(-50%) rotate(45deg); z-index: 2;
+}
+.pipeline.flow .stage:last-child::after { display: none; }
+
+/* ---------- steps (fragmentos) ---------- */
+[data-at] { transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+[data-at]:not(.shown) { opacity: 0; transform: translateY(8px); }
+.only { display: none; }
+.only.on { display: block; animation: fadein var(--dur-2) var(--ease-out); }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- parser tracer ---------- */
+.tracer { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,.95fr) minmax(0,1.2fr); gap: var(--sp-4); flex: 1; min-height: 0; }
+.tracer .pane { display: flex; flex-direction: column; min-height: 0; }
+.pane-title { font-size: var(--fs-small); font-weight: 700; color: var(--ink-2); margin-bottom: var(--sp-2); display: flex; justify-content: space-between; }
+.pane-title .mono { font-weight: 400; color: var(--ink-3); font-size: 16px; }
+.tracer pre.code { flex: 1; font-size: 20px; }
+.seg { border-radius: 3px; transition: background var(--dur-2), color var(--dur-2), box-shadow var(--dur-2); }
+.seg.done { background: var(--hl-done); color: var(--ink-3); }
+.seg.done .k, .seg.done .t, .seg.done .n, .seg.done .s { color: inherit; }
+.seg.now { background: var(--hl-now); box-shadow: 0 2px 0 var(--cin-red); color: var(--ink); }
+.callstack { background: var(--cin-black); color: #fff; border-radius: var(--r-2); padding: var(--sp-3); flex: 1; font-family: var(--font-mono); font-size: 17px; line-height: 1.5; overflow: hidden; }
+.callstack .frame { display: block; padding-left: calc(var(--d, 0) * 18px); color: rgba(255,255,255,.62); }
+.callstack .frame.top { color: #fff; }
+.callstack .frame.top::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--cin-red); margin-right: 8px; vertical-align: middle; }
+.callstack .note { font-family: var(--font-sans); font-size: 19px; line-height: 1.4; color: rgba(255,255,255,.9); margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid rgba(255,255,255,.18); }
+.ast { background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-3); flex: 1; font-family: var(--font-mono); font-size: 18px; line-height: 1.5; overflow: hidden; }
+.ast .ln { display: block; white-space: pre; transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out), background var(--dur-3); border-radius: 3px; }
+.ast .ln:not(.shown) { opacity: 0; transform: translateX(-10px); }
+.ast .ln.fresh { background: var(--hl-now); }
+.ast .ty { color: var(--cin-red-dark); font-weight: 600; }
+
+/* ---------- tabelas ---------- */
+table { border-collapse: collapse; width: 100%; font-size: var(--fs-small); }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.35; }
+th { font-weight: 700; color: var(--ink-2); border-bottom: 2px solid var(--ink); }
+td.ok { color: #1E6B35; font-weight: 700; }
+td.no { color: var(--ink-3); }
+
+/* ---------- PR cards ---------- */
+.prs { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
+.pr { border-top: 6px solid var(--cin-red); background: var(--paper-2); padding: var(--sp-4); border-radius: 0 0 var(--r-2) var(--r-2); }
+.pr.muted { border-top-color: var(--ink-3); }
+.pr .id { font-family: var(--font-mono); font-size: 18px; color: var(--ink-3); }
+.pr h3 { font-size: 26px; margin: 8px 0 var(--sp-2); line-height: 1.2; }
+.pr li { font-size: 19px; line-height: 1.4; }
+
+/* ---------- capa ---------- */
+.cover { justify-content: space-between; }
+.cover .meta { display: flex; justify-content: space-between; align-items: end; font-size: var(--fs-small); }
+.cover .bar { height: 12px; width: 240px; background: #fff; margin-bottom: var(--sp-6); }
+
+/* ---------- chrome: progresso, contador, controles ---------- */
+.chrome { position: absolute; left: 12px; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; padding: 0 var(--sp-6) 0 var(--sp-12); gap: var(--sp-3); z-index: 10; pointer-events: none; }
+.chrome .where { font-size: 16px; color: var(--ink-3); flex: 1; }
+.chrome .count { font-family: var(--font-mono); font-size: 16px; color: var(--ink-2); }
+.chrome button { pointer-events: auto; background: none; border: 1px solid var(--line); color: var(--ink-2); width: 40px; height: 40px; border-radius: var(--r-1); font: 600 18px var(--font-sans); cursor: pointer; display: grid; place-items: center; transition: background var(--dur-1), color var(--dur-1); }
+.chrome button:hover { background: var(--cin-red); color: #fff; border-color: var(--cin-red); }
+.chrome button:focus-visible { outline: 3px solid var(--cin-red); outline-offset: 2px; }
+.deck.on-color .chrome .where, .deck.on-color .chrome .count { color: rgba(255,255,255,.8); }
+.deck.on-color .chrome button { color: #fff; border-color: rgba(255,255,255,.4); }
+.progress { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(35,31,32,.08); z-index: 11; }
+.progress i { display: block; height: 100%; width: 0; background: var(--cin-red); transition: width var(--dur-3) var(--ease-in-out); }
+.deck.on-color .progress i { background: #fff; }
+.steps-dots { display: flex; gap: 6px; }
+.steps-dots b { width: 8px; height: 8px; border-radius: 50%; background: var(--line); transition: background var(--dur-1); }
+.steps-dots b.on { background: var(--cin-red); }
+
+/* ---------- misc ---------- */
+.callout { border-left: 6px solid var(--cin-red); padding: var(--sp-2) var(--sp-3); background: var(--paper-2); font-size: var(--fs-body); line-height: 1.4; }
+.grammar { font-family: var(--font-mono); font-size: 22px; line-height: 1.7; }
+.grammar .nt { color: var(--cin-red-dark); font-weight: 600; }
+.grammar .lit { background: var(--paper-2); padding: 0 6px; border-radius: 3px; }
+.grammar .new { box-shadow: inset 4px 0 0 var(--cin-red); padding-left: 16px; display: block; background: rgba(219,30,47,.05); }
+.grammar .old { padding-left: 16px; display: block; color: var(--ink-3); }
+.term { background: var(--cin-black); color: #EDEDED; border-radius: var(--r-2); padding: var(--sp-3) var(--sp-4); font: 19px/1.55 var(--font-mono); white-space: pre; }
+.term .p { color: #FF6B78; }
+.term .ok { color: #9BDB9F; }
+.term .err { color: #FFB4BB; }
+.big-num { font-size: 96px; font-weight: 800; letter-spacing: -.03em; line-height: 1; color: var(--cin-red); }
+.num-label { font-size: var(--fs-small); color: var(--ink-2); margin-top: 8px; }
+.ladder { font-family: var(--font-mono); font-size: 20px; }
+.ladder div { padding: 8px 14px; border-left: 3px solid var(--line); }
+.ladder div.hot { border-left-color: var(--cin-red); background: rgba(219,30,47,.07); font-weight: 600; }
+.ladder div span { color: var(--ink-3); font-family: var(--font-sans); font-size: 17px; margin-left: 10px; }
+</style>
+</head>
+<body>
+<div class="viewport">
+<main class="deck" id="deck" aria-live="polite">
+
+<!-- 1. Capa -->
+<section class="slide inverse cover" data-title="Capa">
+  <div>
+    <div class="bar" aria-hidden="true"></div>
+    <div class="display">Classes no<br>RPython</div>
+    <p class="lead" style="margin-top:var(--sp-4)">Fase 1: entender e modificar o parser para reconhecer a sintaxe de classes.</p>
+  </div>
+  <div class="meta">
+    <span>Compiladores<br>Centro de Informática, UFPE</span>
+    <span class="small">Use as setas, Espaço ou PageUp/PageDown. F para tela cheia.</span>
+  </div>
+</section>
+
+<!-- 2. O que é o RPython -->
+<section class="slide" data-title="O que é o RPython">
+  <div class="head"><div class="kicker">Ponto de partida</div><h1>RPython é uma linguagem didática com sintaxe de Python e tipos estáticos</h1></div>
+  <div class="cols w-60 grow">
+    <pre class="code sm"><span class="c"># examples/hello.rpy</span>
+<span class="k">val</span> name = <span class="s">"World"</span>;
+<span class="k">var</span> _ = print(<span class="s">"Hello, "</span>);
+<span class="k">var</span> _ = print_line(name);
+
+<span class="k">val</span> x = <span class="n">10</span>;
+<span class="k">val</span> y = <span class="n">20</span>;
+<span class="k">val</span> sum = x + y;
+
+asserttrue(sum == <span class="n">30</span>, <span class="s">"sum should be 30"</span>);</pre>
+    <div class="stack">
+      <ul class="clean">
+        <li>Implementada em Rust, para ensinar implementação de linguagens.</li>
+        <li>Blocos abertos por <code>:</code> e fechados por <code>end</code>; statements separados por <code>;</code>.</li>
+        <li>Tem funções, listas, tuplas, ADTs, lambdas e testes embutidos.</li>
+        <li>Não tem objetos, métodos nem acesso a atributos.</li>
+      </ul>
+      <div class="term"><span class="p">$</span> cargo run -- examples/hello.rpy
+Hello, World
+<span class="ok">10 + 20 = 30</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Pipeline do compilador -->
+<section class="slide" data-title="Como o RPython funciona" data-steps="1">
+  <div class="head"><div class="kicker">Arquitetura</div><h1>Quatro etapas, todas sobre a mesma AST</h1></div>
+  <div class="pipeline flow" id="pipe">
+    <div class="stage"><h3>Texto .rpy</h3><p>Programa lido como <code>&amp;str</code></p><div class="file">src/main.rs</div></div>
+    <div class="stage" data-focus="1"><h3>Parser</h3><p>Combinadores <code>nom</code> transformam texto em AST</p><div class="file">src/parser/</div></div>
+    <div class="stage" data-dim="1"><h3>Type checker</h3><p>Valida tipos sobre a AST</p><div class="file">src/type_checker/</div></div>
+    <div class="stage" data-dim="1"><h3>Interpretador</h3><p>Executa a AST (tree-walking)</p><div class="file">src/interpreter/</div></div>
+  </div>
+  <div class="cols" style="margin-top:var(--sp-6)">
+    <p class="lead">Não existe um lexer separado. Os "tokens" são consumidos pelos próprios combinadores: <code>keyword("class")</code>, <code>identifier</code>, <code>char(':')</code>.</p>
+    <p class="lead" data-at="1">Esta entrega mexe só na etapa em destaque. As outras recebem apenas o mínimo para o código continuar compilando.</p>
+  </div>
+</section>
+
+<!-- 4. Objetivo geral vs fase -->
+<section class="slide" data-title="Objetivo e escopo">
+  <div class="head"><div class="kicker">Objetivo do projeto</div><h1>O projeto quer classes completas. Esta fase entrega a sintaxe.</h1></div>
+  <div class="cols grow">
+    <div>
+      <h2 style="margin-bottom:var(--sp-3)">Proposta do grupo</h2>
+      <ul class="clean">
+        <li>Declarar classes com campos <code>val</code>/<code>var</code> e métodos <code>def</code></li>
+        <li><code>self</code> explícito como primeiro parâmetro</li>
+        <li>Acesso <code>obj.campo</code> e chamada <code>obj.metodo(args)</code></li>
+        <li>Instanciação, tipagem e execução</li>
+      </ul>
+      <p class="small" style="margin-top:var(--sp-3)">Fonte: docs/PROPOSTA_CLASSES.md, seção 3</p>
+    </div>
+    <div>
+      <h2 style="margin-bottom:var(--sp-3)">Orientação do professor</h2>
+      <div class="callout">Focar exclusivamente no parser nesta fase. Entender como ele funciona e modificá-lo para representar a nova sintaxe.</div>
+      <p style="margin-top:var(--sp-4)">Por isso: <strong>profundidade no parser</strong> em vez de amplitude pelo compilador inteiro. A exploração inicial (PR #2) já ia até o interpretador; ela serviu de estudo, mas não é a entrega.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Como o parser funciona -->
+<section class="slide" data-title="Como o parser funcionava">
+  <div class="head"><div class="kicker">Parser antes da mudança</div><h1>Uma cascata de <code style="font-size:.8em;background:none;padding:0">alt</code> para statements e uma escada de precedência para expressões</h1></div>
+  <div class="cols w-40 grow">
+    <div class="stack">
+      <p><code>parse()</code> em <code>src/parser/mod.rs</code> lê uma lista de statements separados por <code>;</code>.</p>
+      <p><code>parse_statement</code> tenta cada alternativa em ordem; a primeira que casa vence. Palavras-chave vêm antes, atribuição e expressão ficam por último.</p>
+      <p>Blocos (<code>parse_block</code>) são <code>:</code> + statements + <code>end</code>, e viram <code>Statement::Block</code>.</p>
+      <p>Cada parser devolve <code>IResult&lt;&amp;str, T&gt;</code>: o resto da entrada e o nó produzido.</p>
+    </div>
+    <div class="ladder">
+      <div>parse_expression <span>entrada</span></div>
+      <div>parse_or</div>
+      <div>parse_and</div>
+      <div>parse_not</div>
+      <div>parse_relational <span>&lt; &lt;= == !=</span></div>
+      <div>parse_add_sub <span>+ -</span></div>
+      <div>parse_term <span>* /</span></div>
+      <div class="hot">parse_factor <span>literais, variáveis, chamadas, parênteses</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Gaps -->
+<section class="slide" data-title="O que faltava">
+  <div class="head"><div class="kicker">Lacunas</div><h1>O que o parser não sabia representar</h1></div>
+  <table>
+    <thead><tr><th style="width:9%">Gap</th><th style="width:44%">Problema</th><th>Mudança mínima</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">GAP-01</td><td><code>class</code> não era palavra reservada</td><td><code>"class"</code> em <code>KEYWORDS</code> e <code>CLASS_KEYWORD</code></td></tr>
+      <tr><td class="mono">GAP-02</td><td>Sem nó de AST para uma declaração de classe</td><td><code>Class</code>, <code>FieldDeclaration</code>, <code>Statement::ClassDef</code></td></tr>
+      <tr><td class="mono">GAP-03</td><td>Nenhuma regra reconhecia <code>class Nome: ... end</code></td><td><code>parse_class_definition_statement</code></td></tr>
+      <tr><td class="mono">GAP-04</td><td><code>self: Point</code> falhava: nome de classe não era tipo</td><td><code>Type::TClass</code> e <code>parse_class_type</code></td></tr>
+      <tr><td class="mono">GAP-05</td><td>O caractere <code>.</code> só existia em números reais</td><td>Sufixos <code>.nome</code> e <code>.nome(args)</code> em <code>parse_factor</code></td></tr>
+      <tr><td class="mono">GAP-06</td><td>Atribuição aceitava só identificador à esquerda</td><td><code>Statement::FieldAssignment</code></td></tr>
+      <tr><td class="mono">GAP-07</td><td>Nenhum teste de parsing para essa sintaxe</td><td>17 testes novos e 3 exemplos <code>.rpy</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 7. Gramática -->
+<section class="slide" data-title="Gramática adicionada" data-steps="2">
+  <div class="head"><div class="kicker">Sintaxe</div><h1>Gramática adicionada</h1></div>
+  <div class="grammar">
+    <span class="new"><span class="nt">class_def</span>  ::= <span class="lit">class</span> IDENT <span class="lit">:</span> [ <span class="nt">member</span> { <span class="lit">;</span> <span class="nt">member</span> } [<span class="lit">;</span>] ] <span class="lit">end</span></span>
+    <span class="new"><span class="nt">member</span>     ::= <span class="nt">field</span> | <span class="nt">method</span></span>
+    <span class="new"><span class="nt">field</span>      ::= ( <span class="lit">val</span> | <span class="lit">var</span> ) IDENT <span class="lit">:</span> <span class="nt">type</span> <span class="lit">=</span> <span class="nt">expr</span></span>
+    <span class="new"><span class="nt">method</span>     ::= <span class="nt">func_def</span>   <span class="c">-- o primeiro parâmetro deve se chamar self</span></span>
+    <span data-at="1" style="display:block">
+    <span class="new"><span class="nt">type</span>       ::= ... | IDENT   <span class="c">-- nome de classe, tentado por último</span></span>
+    <span class="new"><span class="nt">factor</span>     ::= <span class="nt">primary</span> { <span class="lit">.</span> IDENT [ <span class="lit">(</span> <span class="nt">args</span> <span class="lit">)</span> ] }</span>
+    <span class="new"><span class="nt">field_asg</span>  ::= <span class="nt">factor</span> <span class="lit">=</span> <span class="nt">expr</span>   <span class="c">-- o factor deve terminar em .IDENT</span></span>
+    </span>
+    <span data-at="2" style="display:block;margin-top:var(--sp-3)">
+    <span class="old"><span class="nt">primary</span>    ::= bool | number | string | list | call | var | ( ... ) | lambda   <span class="c">-- antigo factor, sem mudança</span></span>
+    </span>
+  </div>
+</section>
+
+<!-- 8. Tracer: class Point -->
+<section class="slide" data-title="Parsing de uma classe" data-steps="9" data-tracer="t1">
+  <div class="head" style="margin-bottom:var(--sp-4)"><div class="kicker">Passo a passo</div><h2>Como o parser consome <code style="background:none;padding:0">class Point</code></h2></div>
+  <div class="tracer" id="t1">
+    <div class="pane">
+      <div class="pane-title">Entrada <span class="mono">examples/classes</span></div>
+<pre class="code"><span class="seg" data-on="1"><span class="k">class</span></span> <span class="seg" data-on="2">Point</span><span class="seg" data-on="3">:</span>
+    <span class="seg" data-on="4"><span class="k">var</span> x: <span class="t">Int</span> = <span class="n">0</span></span><span class="seg" data-on="5">;</span>
+    <span class="seg" data-on="6"><span class="k">def</span> get_x(<span class="seg" data-on="7">self: Point</span>)
+        -&gt; <span class="t">Int</span></span><span class="seg" data-on="8">:
+        <span class="k">return</span> self.x;
+    <span class="k">end</span></span>;
+<span class="seg" data-on="9"><span class="k">end</span></span></pre>
+    </div>
+    <div class="pane">
+      <div class="pane-title">Pilha de chamadas</div>
+      <div class="callstack">
+        <div class="only" data-only="0"><span class="frame top">parse_statement</span><div class="note">Tenta cada alternativa do <code>alt</code>. As alternativas de <code>var</code>, <code>val</code>, <code>if</code>, ... falham sem consumir nada.</div></div>
+        <div class="only" data-only="1"><span class="frame">parse_statement</span><span class="frame top" style="--d:1">parse_class_definition_statement</span><span class="frame" style="--d:2">keyword(CLASS_KEYWORD)</span><div class="note"><code>keyword</code> exige palavra inteira: <code>classe = 1</code> continua sendo uma atribuição.</div></div>
+        <div class="only" data-only="2"><span class="frame">parse_class_definition_statement</span><span class="frame top" style="--d:1">identifier</span><div class="note">Mesmo <code>identifier</code> de variáveis. Agora rejeita <code>class</code> por estar em <code>KEYWORDS</code>.</div></div>
+        <div class="only" data-only="3"><span class="frame">parse_class_definition_statement</span><span class="frame top" style="--d:1">char(COLON_CHAR)</span><div class="note">Abre o corpo da classe. Daqui em diante: lista de membros separados por <code>;</code>.</div></div>
+        <div class="only" data-only="4"><span class="frame">separated_list0</span><span class="frame" style="--d:1">alt(field, method)</span><span class="frame top" style="--d:2">parse_class_field</span><div class="note"><code>var</code> marca <code>mutable: true</code>. O tipo é obrigatório no campo, diferente de <code>var x = 0</code> comum.</div></div>
+        <div class="only" data-only="5"><span class="frame top">separated_list0</span><div class="note">Consome o separador <code>;</code> e tenta o próximo membro.</div></div>
+        <div class="only" data-only="6"><span class="frame">alt(field, method)</span><span class="frame" style="--d:1">parse_class_method</span><span class="frame top" style="--d:2">parse_function_definition_statement</span><div class="note">O método reutiliza o parser de função já existente, sem duplicar a regra.</div></div>
+        <div class="only" data-only="7"><span class="frame">parse_formal_argument</span><span class="frame" style="--d:1">parse_type</span><span class="frame top" style="--d:2">parse_class_type</span><div class="note"><code>Point</code> não é <code>Int</code>, <code>List</code>, ... Última alternativa: vira <code>TClass("Point")</code>.</div></div>
+        <div class="only" data-only="8"><span class="frame">parse_block</span><span class="frame" style="--d:1">parse_return_statement</span><span class="frame" style="--d:2">parse_expression ... parse_factor</span><span class="frame top" style="--d:3">fold .x</span><div class="note">De volta em <code>parse_class_method</code>: confere que o 1º parâmetro é <code>self</code>, senão falha com <code>ErrorKind::Verify</code>.</div></div>
+        <div class="only" data-only="9"><span class="frame">parse_class_definition_statement</span><span class="frame top" style="--d:1">keyword(END_KEYWORD)</span><div class="note">Membros são separados em <code>fields</code> e <code>methods</code>; sai o <code>Statement::ClassDef</code>.</div></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="pane-title">AST produzida <span class="mono">src/ir/ast.rs</span></div>
+      <div class="ast">
+<span class="ln" data-at="1"><span class="ty">ClassDef</span>(<span class="ty">Class</span> {</span><span class="ln" data-at="2">  name: "Point",</span><span class="ln" data-at="4">  fields: [<span class="ty">FieldDeclaration</span> {</span><span class="ln" data-at="4">    name: "x", field_type: TInteger,</span><span class="ln" data-at="4">    mutable: true, initializer: CInt(0) }],</span><span class="ln" data-at="6">  methods: [<span class="ty">Function</span> {</span><span class="ln" data-at="6">    name: "get_x", kind: TInteger,</span><span class="ln" data-at="7">    params: [self: <span class="ty">TClass</span>("Point")],</span><span class="ln" data-at="8">    body: Block([Return(</span><span class="ln" data-at="8">      <span class="ty">FieldAccess</span>(Var("self"), "x"))]) }]</span><span class="ln" data-at="9">})</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9. Tracer: member access precedence -->
+<section class="slide" data-title="Acesso a membros" data-steps="6" data-tracer="t2">
+  <div class="head" style="margin-bottom:var(--sp-4)"><div class="kicker">Passo a passo</div><h2>O ponto liga mais forte que qualquer operador</h2></div>
+  <div class="tracer" id="t2" style="grid-template-columns: minmax(0,1.1fr) minmax(0,.8fr) minmax(0,1fr)">
+    <div class="pane">
+      <div class="pane-title">Entrada</div>
+<pre class="code" style="font-size:26px;flex:none"><span class="seg" data-on="1">p</span><span class="seg" data-on="2">.x</span> <span class="seg" data-on="5">+</span> <span class="seg" data-on="3">f(1)</span><span class="seg" data-on="4">.y</span> <span class="seg" data-on="5">* 2</span></pre>
+      <p class="small" style="margin-top:var(--sp-3)">Antes desta fase, o parser lia <code>p</code> e parava: <code>.x + ...</code> sobrava sem consumir.</p>
+      <pre class="code xs" style="margin-top:var(--sp-3);flex:none"><span class="k">pub fn</span> parse_factor(input) {
+  <span class="k">let</span> (input, init) = parse_primary(input)?;
+  fold_many0(
+    preceded(char(<span class="s">'.'</span>),
+      pair(identifier, opt(parse_actual_arguments))),
+    <span class="c">// Some(args) =&gt; MethodCall, None =&gt; FieldAccess</span>
+  )
+}</pre>
+    </div>
+    <div class="pane">
+      <div class="pane-title">Pilha de chamadas</div>
+      <div class="callstack">
+        <div class="only" data-only="0"><span class="frame top">parse_expression</span><div class="note">Desce a escada: or, and, not, relational, add_sub, term, factor.</div></div>
+        <div class="only" data-only="1"><span class="frame">parse_term</span><span class="frame" style="--d:1">parse_factor</span><span class="frame top" style="--d:2">parse_primary</span><div class="note"><code>parse_primary</code> é o antigo <code>parse_factor</code>, só renomeado.</div></div>
+        <div class="only" data-only="2"><span class="frame">parse_factor</span><span class="frame top" style="--d:1">fold_many0(.ident)</span><div class="note">Sem <code>(</code> depois do nome: <code>FieldAccess</code>. O laço continua enquanto houver <code>.</code>.</div></div>
+        <div class="only" data-only="3"><span class="frame">parse_term</span><span class="frame" style="--d:1">parse_factor</span><span class="frame top" style="--d:2">parse_primary: parse_function_call</span><div class="note">Qualquer primário pode receber o sufixo, inclusive uma chamada.</div></div>
+        <div class="only" data-only="4"><span class="frame">parse_factor</span><span class="frame top" style="--d:1">fold_many0(.ident)</span><div class="note"><code>f(1).y</code> vira <code>FieldAccess(FuncCall(f, [1]), "y")</code>.</div></div>
+        <div class="only" data-only="5"><span class="frame">parse_add_sub</span><span class="frame top" style="--d:1">parse_term</span><div class="note">Só depois os operadores combinam os fatores: <code>*</code> em <code>parse_term</code>, <code>+</code> em <code>parse_add_sub</code>.</div></div>
+        <div class="only" data-only="6"><span class="frame top">parse_expression</span><div class="note">Entrada inteira consumida. <code>a.b.c()</code> segue a mesma regra, associando à esquerda.</div></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="pane-title">AST produzida</div>
+      <div class="ast" style="font-size:20px">
+<span class="ln" data-at="5"><span class="ty">Add</span>(</span><span class="ln" data-at="2">  <span class="ty">FieldAccess</span>(</span><span class="ln" data-at="1">    Var("p"),</span><span class="ln" data-at="2">    "x"),</span><span class="ln" data-at="5">  <span class="ty">Mul</span>(</span><span class="ln" data-at="4">    <span class="ty">FieldAccess</span>(</span><span class="ln" data-at="3">      FuncCall("f", [CInt(1)]),</span><span class="ln" data-at="4">      "y"),</span><span class="ln" data-at="5">    CInt(2)))</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10. AST changes -->
+<section class="slide" data-title="Alterações na AST">
+  <div class="head"><div class="kicker">src/ir/ast.rs</div><h1>Seis adições na AST, nenhuma variante existente alterada</h1></div>
+  <div class="cols grow">
+<pre class="code xs"><span class="add"><span class="k">pub struct</span> <span class="t">FieldDeclaration</span> {</span>
+<span class="add">    <span class="k">pub</span> name: Name,</span>
+<span class="add">    <span class="k">pub</span> field_type: <span class="t">Type</span>,</span>
+<span class="add">    <span class="k">pub</span> mutable: <span class="t">bool</span>,        <span class="c">// var = true, val = false</span></span>
+<span class="add">    <span class="k">pub</span> initializer: <span class="t">Box</span>&lt;<span class="t">Expression</span>&gt;,</span>
+<span class="add">}</span>
+
+<span class="add"><span class="k">pub struct</span> <span class="t">Class</span> {</span>
+<span class="add">    <span class="k">pub</span> name: Name,</span>
+<span class="add">    <span class="k">pub</span> fields: <span class="t">Vec</span>&lt;<span class="t">FieldDeclaration</span>&gt;,</span>
+<span class="add">    <span class="k">pub</span> methods: <span class="t">Vec</span>&lt;<span class="t">Function</span>&gt;,  <span class="c">// reaproveita Function</span></span>
+<span class="add">}</span></pre>
+<pre class="code xs"><span class="k">pub enum</span> <span class="t">Type</span> {
+    ...
+<span class="add">    TClass(Name),             <span class="c">// self: Point</span></span>
+}
+
+<span class="k">pub enum</span> <span class="t">Expression</span> {
+    ...
+<span class="add">    FieldAccess(<span class="t">Box</span>&lt;Expression&gt;, Name),</span>
+<span class="add">    MethodCall(<span class="t">Box</span>&lt;Expression&gt;, Name, <span class="t">Vec</span>&lt;Expression&gt;),</span>
+}
+
+<span class="k">pub enum</span> <span class="t">Statement</span> {
+    ...
+<span class="add">    ClassDef(Class),</span>
+<span class="add">    FieldAssignment(<span class="t">Box</span>&lt;Expression&gt;, Name, <span class="t">Box</span>&lt;Expression&gt;),</span>
+}</pre>
+  </div>
+  <p class="small" style="margin-top:var(--sp-3)">Ficaram de fora de propósito: <code>New</code> (instanciação, <code>Point()</code> continua sendo <code>FuncCall</code>) e <code>ClassInstance</code> (valor de runtime).</p>
+</section>
+
+<!-- 11. Exemplo + resultado -->
+<section class="slide" data-title="Exemplo completo">
+  <div class="head"><div class="kicker">examples/classes/point_full.rpy</div><h1>O exemplo da proposta é aceito inteiro pelo parser</h1></div>
+  <div class="cols grow" style="grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr);gap:var(--sp-4)">
+<pre class="code xs"><span class="k">class</span> Point:
+    <span class="k">var</span> x: <span class="t">Int</span> = <span class="n">0</span>;
+    <span class="k">var</span> y: <span class="t">Int</span> = <span class="n">0</span>;
+
+    <span class="k">def</span> init(self: Point, x: <span class="t">Int</span>, y: <span class="t">Int</span>) -&gt; <span class="t">Unit</span>:
+        self.x = x;
+        self.y = y;
+    <span class="k">end</span>;
+
+    <span class="k">def</span> get_x(self: Point) -&gt; <span class="t">Int</span>:
+        <span class="k">return</span> self.x;
+    <span class="k">end</span>;
+<span class="k">end</span>;
+
+<span class="k">val</span> p = Point();
+p.init(<span class="n">3</span>, <span class="n">4</span>);
+<span class="k">val</span> px = p.get_x();
+assert(px == <span class="n">3</span>, <span class="s">"x deveria ser 3"</span>);</pre>
+<pre class="code xs" style="background:var(--paper-2);font-size:15px"><span class="c">// parse(src) devolve rest = "" e 5 statements:</span>
+[
+  <span class="k">ClassDef</span>(Class { name: "Point",
+    fields: [x: TInteger, y: TInteger],
+    methods: [
+      init(self: TClass("Point"), x, y) -&gt; TVoid
+        Block([ <span class="k">FieldAssignment</span>(Var("self"), "x", Var("x")),
+                <span class="k">FieldAssignment</span>(Var("self"), "y", Var("y")) ]),
+      get_x(self: TClass("Point")) -&gt; TInteger
+        Block([ Return(<span class="k">FieldAccess</span>(Var("self"), "x")) ]) ] }),
+  ValDeclaration("p", FuncCall("Point", [])),
+  ExprStmt(<span class="k">MethodCall</span>(Var("p"), "init", [CInt(3), CInt(4)])),
+  ValDeclaration("px", <span class="k">MethodCall</span>(Var("p"), "get_x", [])),
+  Assert(EQ(Var("px"), CInt(3)), CString("x deveria ser 3"))
+]</pre>
+  </div>
+</section>
+
+<!-- 12. Testes -->
+<section class="slide" data-title="Testes">
+  <div class="head"><div class="kicker">tests/parser_tests.rs</div><h1>Os testes provam reconhecimento e formato da AST</h1></div>
+  <div class="cols w-40 grow">
+    <div class="stack">
+      <div><div class="big-num">17</div><div class="num-label">testes novos de parser, sintaxe válida e inválida</div></div>
+      <div><div class="big-num" style="color:var(--ink)">0</div><div class="num-label">regressões: os 279 testes unitários, 24 de pretty print e 17 de beecrowd continuam passando</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Módulo</th><th>O que verifica</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">class_tests</td><td>Classe vazia, campos <code>val</code>/<code>var</code>, método com <code>self: TClass</code>, arquivo de exemplo</td></tr>
+        <tr><td class="mono">class_tests</td><td>Rejeita: sem nome, nome reservado, sem <code>:</code>, sem <code>end</code>, campo sem tipo, statement solto no corpo, método sem <code>self</code></td></tr>
+        <tr><td class="mono">member_access_tests</td><td><code>p.x</code>, <code>a.b.c()</code>, argumentos, precedência com <code>+</code> e <code>*</code>, <code>2.5</code> continua real</td></tr>
+        <tr><td class="mono">member_access_tests</td><td><code>self.a.b = 3</code>, <code>x = 1</code> inalterado, <code>p.f() = 1</code> não é atribuição</td></tr>
+        <tr><td class="mono">test_full_class_program</td><td>Programa da proposta (seção 3.2) parseado de ponta a ponta</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 13. PRs -->
+<section class="slide" data-title="Divisão dos PRs">
+  <div class="head"><div class="kicker">Rastreabilidade</div><h1>Dois PRs pequenos, empilhados, cada um com seus testes</h1></div>
+  <div class="prs">
+    <div class="pr muted">
+      <div class="id">PR #2, exploratório</div>
+      <h3>Classes de ponta a ponta</h3>
+      <ul class="clean"><li>Parser, type checker, interpretador e pretty print juntos</li><li>Útil como estudo; fora do escopo desta fase</li><li>Mantido como rascunho</li></ul>
+    </div>
+    <div class="pr">
+      <div class="id">PR #{{PR_A}}, GAP-01 a 04</div>
+      <h3>Declaração de classe</h3>
+      <ul class="clean"><li><code>class</code> reservada</li><li><code>Class</code>, <code>FieldDeclaration</code>, <code>ClassDef</code>, <code>TClass</code></li><li><code>parse_class_definition_statement</code></li><li>6 testes + exemplo</li></ul>
+    </div>
+    <div class="pr">
+      <div class="id">PR #{{PR_B}}, GAP-05 e 06</div>
+      <h3>Acesso a membros</h3>
+      <ul class="clean"><li><code>FieldAccess</code>, <code>MethodCall</code>, <code>FieldAssignment</code></li><li><code>parse_factor</code> com sufixo <code>.</code></li><li><code>parse_field_assignment_statement</code></li><li>11 testes + 2 exemplos</li></ul>
+    </div>
+  </div>
+  <p class="small" style="margin-top:var(--sp-6)">Cadeia: requisito, GAP, branch, PR, arquivos, teste. Detalhes em docs/IMPLEMENTATION_GUIDE.md.</p>
+</section>
+
+<!-- 14. Fora do escopo -->
+<section class="slide dark" data-title="Fora desta etapa">
+  <div class="head"><div class="kicker" style="color:#FF6B78">Future work</div><h1>O parser reconhece. O resto do compilador ainda recusa.</h1></div>
+  <div class="cols grow">
+    <ul class="clean">
+      <li>Type checking de classes, campos e métodos</li>
+      <li>Instanciação <code>Point()</code> e o nó <code>New</code></li>
+      <li>Execução de métodos e resolução de <code>self</code></li>
+      <li>Representação de objetos em runtime</li>
+      <li>Herança, visibilidade, construtores com argumentos</li>
+      <li>Pretty print completo de classes</li>
+    </ul>
+    <div class="stack">
+      <p class="lead">Fora do parser só entraram braços de <code>match</code> para o Rust compilar. O type checker devolve erro explícito:</p>
+      <div class="term" style="background:#2E2A2B">[Type Error] classes are not supported yet (class 'Point')
+[Type Error] member access is not supported yet ('.x')</div>
+    </div>
+  </div>
+</section>
+
+<!-- 15. Próximos passos -->
+<section class="slide inverse" data-title="Próximos passos">
+  <div class="head"><div class="kicker">Depois desta fase</div><h1>Próximos passos</h1></div>
+  <div class="pipeline flow" style="margin-top:var(--sp-4)">
+    <div class="stage" style="color:var(--ink)"><h3>1. Type checker</h3><p>Registrar classes, checar campos, <code>self</code> e chamadas</p></div>
+    <div class="stage" style="color:var(--ink)"><h3>2. Instanciação</h3><p>Decidir entre <code>New</code> na AST ou resolver <code>FuncCall</code> no checker</p></div>
+    <div class="stage" style="color:var(--ink)"><h3>3. Interpretador</h3><p>Objetos em runtime, campos e métodos</p></div>
+    <div class="stage" style="color:var(--ink)"><h3>4. Herança</h3><p><code>class B : A</code> e sobrescrita</p></div>
+  </div>
+  <p class="lead" style="margin-top:var(--sp-8)">A AST desta fase já carrega tudo que essas etapas precisam ler: nome, campos tipados, mutabilidade, métodos e acessos.</p>
+</section>
+
+<nav class="chrome" aria-label="Navegação">
+  <span class="where" id="where"></span>
+  <span class="steps-dots" id="dots" aria-hidden="true"></span>
+  <span class="count" id="count"></span>
+  <button id="prev" aria-label="Slide anterior">&#8249;</button>
+  <button id="next" aria-label="Próximo slide">&#8250;</button>
+  <button id="fs" aria-label="Tela cheia">&#x26F6;</button>
+</nav>
+<div class="progress" aria-hidden="true"><i id="bar"></i></div>
+</main>
+</div>
+
+<script>
+(() => {
+  const deck = document.getElementById('deck');
+  const slides = [...deck.querySelectorAll('.slide')];
+  const $ = id => document.getElementById(id);
+  let i = 0, step = 0;
+
+  const fit = () => deck.style.setProperty('--scale', Math.min(innerWidth / 1600, innerHeight / 900));
+  addEventListener('resize', fit); fit();
+
+  const stepsOf = s => +(s.dataset.steps || 0);
+
+  function paint() {
+    slides.forEach((s, k) => {
+      s.classList.toggle('active', k === i);
+      s.classList.toggle('past', k < i);
+    });
+    const s = slides[i];
+    s.querySelectorAll('[data-at]').forEach(el => {
+      const at = +el.dataset.at;
+      el.classList.toggle('shown', step >= at);
+      el.classList.toggle('fresh', step === at && step > 0);
+    });
+    s.querySelectorAll('[data-only]').forEach(el => el.classList.toggle('on', +el.dataset.only === step));
+    s.querySelectorAll('.seg').forEach(el => {
+      const on = +el.dataset.on;
+      el.classList.toggle('now', on === step);
+      el.classList.toggle('done', on < step);
+    });
+    s.querySelectorAll('[data-focus]').forEach(el => el.classList.toggle('focus', step >= +el.dataset.focus));
+    s.querySelectorAll('[data-dim]').forEach(el => el.classList.toggle('dim', step >= +el.dataset.dim));
+
+    deck.classList.toggle('on-color', s.classList.contains('inverse') || s.classList.contains('dark'));
+    $('where').textContent = s.dataset.title || '';
+    $('count').textContent = `${i + 1} / ${slides.length}`;
+    $('bar').style.width = `${((i + (stepsOf(s) ? step / (stepsOf(s) + 1) : 0)) / (slides.length - 1)) * 100}%`;
+    const n = stepsOf(s);
+    $('dots').innerHTML = n ? Array.from({length: n + 1}, (_, k) => `<b class="${k <= step ? 'on' : ''}"></b>`).join('') : '';
+    try { history.replaceState(null, '', `#${i + 1}` + (step ? `.${step}` : '')); } catch (e) {}
+  }
+
+  function go(to, toStep = 0) {
+    i = Math.max(0, Math.min(slides.length - 1, to));
+    step = Math.max(0, Math.min(stepsOf(slides[i]), toStep));
+    paint();
+  }
+  const next = () => step < stepsOf(slides[i]) ? (step++, paint()) : (i < slides.length - 1 && go(i + 1));
+  const prev = () => step > 0 ? (step--, paint()) : (i > 0 && go(i - 1, stepsOf(slides[i - 1])));
+
+  function toggleFs() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    else document.exitFullscreen?.();
+  }
+
+  addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'PageDown': case ' ': case 'ArrowDown': e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp': case 'ArrowUp': e.preventDefault(); prev(); break;
+      case 'Home': go(0); break;
+      case 'End': go(slides.length - 1); break;
+      case 'f': case 'F': toggleFs(); break;
+    }
+  });
+  $('next').onclick = next; $('prev').onclick = prev; $('fs').onclick = toggleFs;
+  document.addEventListener('fullscreenchange', () => $('fs').setAttribute('aria-label', document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia'));
+
+  // clique na metade direita avança, esquerda volta (útil com apresentador remoto)
+  deck.addEventListener('click', e => {
+    if (e.target.closest('button')) return;
+    const r = deck.getBoundingClientRect();
+    (e.clientX - r.left > r.width / 2 ? next : prev)();
+  });
+
+  const m = location.hash.match(/^#(\d+)(?:\.(\d+))?$/);
+  go(m ? +m[1] - 1 : 0, m && m[2] ? +m[2] : 0);
+})();
+</script>
+</body>
+</html>
