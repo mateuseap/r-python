@@ -4,6 +4,8 @@ Este documento explica o que foi feito na fase 1 do projeto de classes, cujo esc
 definido pelo professor, é **somente o parser**. O objetivo é permitir explicar a
 implementação sem depender de decorar o código.
 
+PRs: #3 (PR A, declaração de classe), #4 (PR B, acesso a membros), #5 (esta documentação). PR #2 é a exploração anterior.
+
 Documentos relacionados:
 
 - `docs/PROPOSTA_CLASSES.md`: proposta completa (todas as fases).
@@ -189,7 +191,7 @@ Comparando os requisitos com o parser da branch `develop`:
 
 ## 6. O que mudou, arquivo por arquivo
 
-### PR A: declaração de classe (`feature/parser-class-declaration`)
+### PR A (#3): declaração de classe (`feature/parser-class-declaration`)
 
 **`src/parser/keywords.rs`**: `"class"` adicionado a `KEYWORDS`. Efeito: `identifier`
 rejeita `class`, então `class` não pode mais ser nome de variável, função ou classe.
@@ -243,7 +245,7 @@ valores default.
 `parse_type`. Um identificador em posição de tipo vira `Type::TClass(nome)`. Ficando por
 último, `Int`, `List[...]`, `Maybe[...]` etc. continuam tendo prioridade.
 
-### PR B: acesso a membros (`feature/parser-member-access`)
+### PR B (#4): acesso a membros (`feature/parser-member-access`)
 
 **`src/parser/parser_common.rs`**: constante `DOT_CHAR = '.'`.
 
