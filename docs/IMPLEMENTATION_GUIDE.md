@@ -11,7 +11,7 @@ Documentos relacionados:
 - `docs/PROPOSTA_CLASSES.md`: proposta completa (todas as fases).
 - `docs/BRIEFING_REUNIAO.md`: briefing da primeira reunião.
 - `docs/PARSER.md`: visão geral do parser antes desta fase.
-- `docs/apresentacao/index.html`: slides da apresentação.
+- `docs/presentation/index.html`: slides da apresentação.
 
 ---
 

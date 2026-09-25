@@ -27,7 +27,8 @@
   --ink-2: #5B5657;
   --ink-3: #8C8788;
   --line: var(--cin-gray);
-  --hl-now: rgba(219, 30, 47, .16);
+  --hl-now: rgba(219, 30, 47, .10);
+  --red-tint: #FBEDEE;
   --hl-done: rgba(35, 31, 32, .06);
   --code-bg: #FAFAF9;
 
@@ -91,11 +92,11 @@ body {
 
 /* faixa vermelha à esquerda: assinatura visual recorrente */
 .slide::before {
-  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px;
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
   background: var(--cin-red);
 }
-.slide.inverse { background: var(--cin-red); color: #fff; }
-.slide.inverse::before { background: var(--cin-red-dark); }
+.slide.inverse { background: var(--cin-black); color: #fff; }
+.slide.inverse::before { background: var(--cin-red); }
 .slide.dark { background: var(--cin-black); color: #fff; }
 
 /* ---------- tipografia ---------- */
@@ -115,7 +116,7 @@ strong { font-weight: 700; }
 
 .head { margin-bottom: var(--sp-6); }
 .head .kicker { font-size: var(--fs-small); color: var(--cin-red); font-weight: 600; margin-bottom: var(--sp-2); }
-.inverse .head .kicker { color: #fff; opacity: .8; }
+.inverse .head .kicker { color: #FF6B78; }
 
 /* ---------- layout helpers ---------- */
 .grow { flex: 1; min-height: 0; }
@@ -127,7 +128,7 @@ ul.clean { list-style: none; padding: 0; }
 ul.clean li { padding-left: 28px; position: relative; }
 ul.clean li + li { margin-top: var(--sp-2); }
 ul.clean li::before { content: ""; position: absolute; left: 0; top: .62em; width: 12px; height: 3px; background: var(--cin-red); }
-.inverse ul.clean li::before { background: #fff; }
+.inverse ul.clean li::before { background: var(--cin-red); }
 
 /* ---------- code ---------- */
 pre.code {
@@ -157,9 +158,8 @@ pre.code.xs { font-size: 16px; line-height: 1.4; }
 .stage h3 { font-size: 28px; font-weight: 700; }
 .stage p { font-size: var(--fs-small); color: var(--ink-2); margin-top: 6px; line-height: 1.35; }
 .stage .file { font-family: var(--font-mono); font-size: 15px; color: var(--ink-3); margin-top: var(--sp-2); }
-.stage.focus { background: var(--cin-red); color: #fff; border-color: var(--cin-red); }
-.stage.focus p, .stage.focus .file { color: rgba(255,255,255,.88); }
-.stage.focus code { background: rgba(255,255,255,.18); color: #fff; }
+.stage.focus { background: var(--red-tint); color: var(--ink); border-color: var(--cin-red); box-shadow: inset 0 6px 0 var(--cin-red); }
+.stage.focus p, .stage.focus .file { color: var(--ink-2); }
 .stage.dim { opacity: .32; }
 .pipeline.flow .stage::after {
   content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px;
@@ -205,7 +205,7 @@ td.no { color: var(--ink-3); }
 
 /* ---------- PR cards ---------- */
 .prs { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
-.pr { border-top: 6px solid var(--cin-red); background: var(--paper-2); padding: var(--sp-4); border-radius: 0 0 var(--r-2) var(--r-2); }
+.pr { border-top: 4px solid var(--cin-red); background: var(--paper-2); padding: var(--sp-4); border-radius: 0 0 var(--r-2) var(--r-2); }
 .pr.muted { border-top-color: var(--ink-3); }
 .pr .id { font-family: var(--font-mono); font-size: 18px; color: var(--ink-3); }
 .pr h3 { font-size: 26px; margin: 8px 0 var(--sp-2); line-height: 1.2; }
@@ -214,7 +214,7 @@ td.no { color: var(--ink-3); }
 /* ---------- capa ---------- */
 .cover { justify-content: space-between; }
 .cover .meta { display: flex; justify-content: space-between; align-items: end; font-size: var(--fs-small); }
-.cover .bar { height: 12px; width: 240px; background: #fff; margin-bottom: var(--sp-6); }
+.cover .bar { height: 12px; width: 240px; background: var(--cin-red); margin-bottom: var(--sp-6); }
 
 /* ---------- chrome: progresso, contador, controles ---------- */
 .chrome { position: absolute; left: 12px; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; padding: 0 var(--sp-6) 0 var(--sp-12); gap: var(--sp-3); z-index: 10; pointer-events: none; }
@@ -227,7 +227,7 @@ td.no { color: var(--ink-3); }
 .deck.on-color .chrome button { color: #fff; border-color: rgba(255,255,255,.4); }
 .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(35,31,32,.08); z-index: 11; }
 .progress i { display: block; height: 100%; width: 0; background: var(--cin-red); transition: width var(--dur-3) var(--ease-in-out); }
-.deck.on-color .progress i { background: #fff; }
+.deck.on-color .progress i { background: var(--cin-red); }
 .steps-dots { display: flex; gap: 6px; }
 .steps-dots b { width: 8px; height: 8px; border-radius: 50%; background: var(--line); transition: background var(--dur-1); }
 .steps-dots b.on { background: var(--cin-red); }
