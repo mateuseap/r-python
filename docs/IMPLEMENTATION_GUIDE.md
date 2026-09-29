@@ -4,7 +4,7 @@ Este documento explica o que foi feito na fase 1 do projeto de classes, cujo esc
 definido pelo professor, é **somente o parser**. O objetivo é permitir explicar a
 implementação sem depender de decorar o código.
 
-PRs: #3 (PR A, declaração de classe), #4 (PR B, acesso a membros), #5 (esta documentação). PR #2 é a exploração anterior.
+PRs: #1 (exemplos `.rpy`), #2 (PR A, declaração de classe), #3 (PR B, acesso a membros), #4 (esta documentação).
 
 Documentos relacionados:
 
@@ -182,8 +182,8 @@ Comparando os requisitos com o parser da branch `develop`:
 
 | Item | O que faz | Escopo atual? | Decisão |
 |---|---|---|---|
-| PR #2 `feature/classes-basic` | Classe só com campos + type checker + interpretador + pretty print + `ClassInstance` | Extrapola: implementa semântica e runtime | Mantido aberto como exploração. A parte de parser serviu de base, mas foi refeita do zero a partir de `develop` para não carregar código fora do escopo. Não tinha métodos nem `TClass` no parser. |
-| PR #1 | Exemplos `.rpy` | Não relacionado | Já mergeado |
+| Exploração inicial | Protótipo local de classes só com campos, indo do parser ao interpretador | Extrapola: implementa semântica e runtime | Usado só como estudo e apresentado na reunião. A implementação desta fase foi feita do zero a partir de `develop`, limitada ao parser. |
+| PR #1 | Exemplos `.rpy` (hello, grades, math, statistics) | Base para entender a sintaxe | Mergeado |
 | Branches `upstream/*` | Trabalhos antigos do repositório original | Não relacionados a classes | Ignoradas |
 | Issues | Desabilitadas no fork | - | A rastreabilidade fica nesta tabela e nos PRs |
 
@@ -191,7 +191,7 @@ Comparando os requisitos com o parser da branch `develop`:
 
 ## 6. O que mudou, arquivo por arquivo
 
-### PR A (#3): declaração de classe (`feature/parser-class-declaration`)
+### PR A (#2): declaração de classe (`feature/parser-class-declaration`)
 
 **`src/parser/keywords.rs`**: `"class"` adicionado a `KEYWORDS`. Efeito: `identifier`
 rejeita `class`, então `class` não pode mais ser nome de variável, função ou classe.
@@ -245,7 +245,7 @@ valores default.
 `parse_type`. Um identificador em posição de tipo vira `Type::TClass(nome)`. Ficando por
 último, `Int`, `List[...]`, `Maybe[...]` etc. continuam tendo prioridade.
 
-### PR B (#4): acesso a membros (`feature/parser-member-access`)
+### PR B (#3): acesso a membros (`feature/parser-member-access`)
 
 **`src/parser/parser_common.rs`**: constante `DOT_CHAR = '.'`.
 
@@ -463,5 +463,5 @@ cargo fmt -- --check             # mesmo check do CI
 - Pretty print completo de classes.
 - Registro de classes no `Environment`.
 
-O PR #2 (exploratório) contém um esboço de parte disso e pode servir de referência
-para as próximas fases.
+A exploração inicial apresentada na reunião tem um esboço de parte disso e pode servir
+de referência para as próximas fases.
