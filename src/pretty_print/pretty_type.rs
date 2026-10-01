@@ -65,6 +65,8 @@ impl ToDoc for Type {
                 concat(params_doc, concat(text(" -> "), ret_doc))
             }
 
+            Type::TClass(name) => text(name.clone()),
+
             // Formata a declaração de um Tipo de Dado Algébrico (ADT).
             Type::TAlgebraicData(name, constructors) => {
                 let ctors_docs = constructors.iter().map(|c| c.to_doc()).collect();

@@ -130,6 +130,22 @@ impl Expression {
                 )
             }
 
+            // ponytail: minimal rendering so the printer stays total; layout polish is future work.
+            Expression::FieldAccess(obj, field) => {
+                concat(obj.to_doc_inner(PREC_CALL), text(format!(".{}", field)))
+            }
+            Expression::MethodCall(obj, method, args) => {
+                let arg_docs: Vec<Rc<Doc>> =
+                    args.iter().map(|a| a.to_doc_inner(PREC_NONE)).collect();
+                concat(
+                    obj.to_doc_inner(PREC_CALL),
+                    concat(
+                        text(format!(".{}(", method)),
+                        concat(punctuate(text(", "), &arg_docs), text(")")),
+                    ),
+                )
+            }
+
             Expression::ListValue(elements) => {
                 let elem_docs: Vec<Rc<Doc>> =
                     elements.iter().map(|e| e.to_doc_inner(PREC_NONE)).collect();

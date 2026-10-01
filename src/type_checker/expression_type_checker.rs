@@ -40,6 +40,11 @@ pub fn check_expr(exp: Expression, env: &Environment<Type>) -> Result<Type, Erro
         }
         Expression::Lambda(func) => check_lambda(&func),
         Expression::Constructor(name, args) => check_adt_constructor(name, args, env),
+        // Member access is parsed only; type checking it is future work.
+        Expression::FieldAccess(_, name) | Expression::MethodCall(_, name, _) => Err(format!(
+            "[Type Error] member access is not supported yet ('.{}')",
+            name
+        )),
     }
 }
 

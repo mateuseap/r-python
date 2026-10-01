@@ -9,15 +9,17 @@ use nom::{
     Err, IResult,
 };
 
-use crate::ir::ast::{Expression, FormalArgument, Function, Statement, Type};
+use crate::ir::ast::{
+    Class, Expression, FieldDeclaration, FormalArgument, Function, Statement, Type,
+};
 use crate::parser::parser_common::{
     identifier, keyword, ASSERTEQ_KEYWORD, ASSERTFALSE_KEYWORD, ASSERTNEQ_KEYWORD,
-    ASSERTTRUE_KEYWORD, ASSERT_KEYWORD, BREAK_KEYWORD, COLON_CHAR, COMMA_CHAR, CONTINUE_KEYWORD,
-    DEF_KEYWORD, ELIF_KEYWORD, ELSE_KEYWORD, END_KEYWORD, EQUALS_CHAR, FOR_KEYWORD, FUNCTION_ARROW,
-    IF_KEYWORD, IN_KEYWORD, LEFT_PAREN, RET_KEYWORD, RIGHT_PAREN, SEMICOLON_CHAR, TEST_KEYWORD,
-    VAL_KEYWORD, VAR_KEYWORD, WHILE_KEYWORD,
+    ASSERTTRUE_KEYWORD, ASSERT_KEYWORD, BREAK_KEYWORD, CLASS_KEYWORD, COLON_CHAR, COMMA_CHAR,
+    CONTINUE_KEYWORD, DEF_KEYWORD, ELIF_KEYWORD, ELSE_KEYWORD, END_KEYWORD, EQUALS_CHAR,
+    FOR_KEYWORD, FUNCTION_ARROW, IF_KEYWORD, IN_KEYWORD, LEFT_PAREN, RET_KEYWORD, RIGHT_PAREN,
+    SEMICOLON_CHAR, TEST_KEYWORD, VAL_KEYWORD, VAR_KEYWORD, WHILE_KEYWORD,
 };
-use crate::parser::parser_expr::parse_expression;
+use crate::parser::parser_expr::{parse_expression, parse_factor};
 use crate::parser::parser_type::parse_type;
 
 pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
@@ -35,11 +37,13 @@ pub fn parse_statement(input: &str) -> IResult<&str, Statement> {
         parse_assertfalse_statement,
         parse_asserttrue_statement,
         parse_test_function_definition_statement,
+        parse_class_definition_statement,
         parse_function_definition_statement,
         parse_return_statement,
         parse_break_statement,
         parse_continue_statement,
         // Fallbacks: assignment first, then bare expression statement
+        parse_field_assignment_statement,
         parse_assignment_statement,
         parse_expression_statement,
     ))(input)
@@ -117,6 +121,24 @@ fn parse_assignment_statement(input: &str) -> IResult<&str, Statement> {
         )),
         |(var, _, expr)| Statement::Assignment(var.to_string(), Box::new(expr)),
     )(input)
+}
+
+/// Parses `obj.field = expr`. The target must end in a field access;
+/// `obj.f() = 1` or `x = 1` are rejected here (the latter is a plain Assignment).
+fn parse_field_assignment_statement(input: &str) -> IResult<&str, Statement> {
+    let (rest, target) = parse_factor(input)?;
+    let (rest, _) = delimited(
+        multispace0,
+        char::<&str, Error<&str>>(EQUALS_CHAR),
+        multispace0,
+    )(rest)?;
+    let (rest, expr) = parse_expression(rest)?;
+    match target {
+        Expression::FieldAccess(obj, field) => {
+            Ok((rest, Statement::FieldAssignment(obj, field, Box::new(expr))))
+        }
+        _ => Err(Err::Error(Error::new(input, ErrorKind::Verify))),
+    }
 }
 
 fn parse_if_else_statement(input: &str) -> IResult<&str, Statement> {
@@ -361,6 +383,91 @@ fn parse_function_definition_statement(input: &str) -> IResult<&str, Statement> 
                 kind: t,
                 params: args,
                 body: Some(Box::new(block)),
+            })
+        },
+    )(input)
+}
+
+/// Parses a class field: `val name: Type = expr` (immutable) or `var name: Type = expr`.
+fn parse_class_field(input: &str) -> IResult<&str, FieldDeclaration> {
+    map(
+        tuple((
+            alt((keyword(VAL_KEYWORD), keyword(VAR_KEYWORD))),
+            identifier,
+            preceded(multispace0, char::<&str, Error<&str>>(COLON_CHAR)),
+            preceded(multispace0, parse_type),
+            delimited(
+                multispace0,
+                char::<&str, Error<&str>>(EQUALS_CHAR),
+                multispace0,
+            ),
+            parse_expression,
+        )),
+        |(kw, name, _, field_type, _, expr)| FieldDeclaration {
+            name: name.to_string(),
+            field_type,
+            mutable: kw == VAR_KEYWORD,
+            initializer: Box::new(expr),
+        },
+    )(input)
+}
+
+/// Parses a method: a `def` whose first parameter is named `self`.
+/// Checking that `self` has the class type is left to the type checker (future work).
+fn parse_class_method(input: &str) -> IResult<&str, Function> {
+    let (rest, stmt) = parse_function_definition_statement(input)?;
+    match stmt {
+        Statement::FuncDef(f) if f.params.first().is_some_and(|p| p.argument_name == "self") => {
+            Ok((rest, f))
+        }
+        _ => Err(Err::Error(Error::new(input, ErrorKind::Verify))),
+    }
+}
+
+enum ClassMember {
+    Field(FieldDeclaration),
+    Method(Function),
+}
+
+/// Parses a class declaration:
+/// `class Name: <member>; <member>; ... end`, where each member is a field or a method.
+fn parse_class_definition_statement(input: &str) -> IResult<&str, Statement> {
+    map(
+        tuple((
+            keyword(CLASS_KEYWORD),
+            identifier,
+            preceded(multispace0, char::<&str, Error<&str>>(COLON_CHAR)),
+            multispace0,
+            separated_list0(
+                delimited(
+                    multispace0,
+                    char::<&str, Error<&str>>(SEMICOLON_CHAR),
+                    multispace0,
+                ),
+                alt((
+                    map(parse_class_field, ClassMember::Field),
+                    map(parse_class_method, ClassMember::Method),
+                )),
+            ),
+            opt(preceded(
+                multispace0,
+                char::<&str, Error<&str>>(SEMICOLON_CHAR),
+            )),
+            delimited(multispace0, keyword(END_KEYWORD), multispace0),
+        )),
+        |(_, name, _, _, members, _, _)| {
+            let mut fields = Vec::new();
+            let mut methods = Vec::new();
+            for member in members {
+                match member {
+                    ClassMember::Field(f) => fields.push(f),
+                    ClassMember::Method(m) => methods.push(m),
+                }
+            }
+            Statement::ClassDef(Class {
+                name: name.to_string(),
+                fields,
+                methods,
             })
         },
     )(input)

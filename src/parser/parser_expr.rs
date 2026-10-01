@@ -20,6 +20,7 @@ use crate::parser::parser_common::{
     COLON_CHAR,
     // Other character constants
     COMMA_CHAR,
+    DOT_CHAR,
     FUNCTION_ARROW,
     LAMBDA_KEYWORD,
     // Bracket and parentheses constants
@@ -116,7 +117,25 @@ fn parse_term(input: &str) -> IResult<&str, Expression> {
     )(input)
 }
 
-fn parse_factor(input: &str) -> IResult<&str, Expression> {
+/// A primary expression followed by zero or more member accesses:
+/// `.name` gives FieldAccess and `.name(args)` gives MethodCall, left-associative,
+/// so `a.b.c()` is MethodCall(FieldAccess(a, b), c, []).
+pub fn parse_factor(input: &str) -> IResult<&str, Expression> {
+    let (input, init) = parse_primary(input)?;
+    fold_many0(
+        preceded(
+            char::<&str, Error<&str>>(DOT_CHAR),
+            pair(identifier, opt(parse_actual_arguments)),
+        ),
+        move || init.clone(),
+        |acc, (name, args)| match args {
+            Some(args) => Expression::MethodCall(Box::new(acc), name.to_string(), args),
+            None => Expression::FieldAccess(Box::new(acc), name.to_string()),
+        },
+    )(input)
+}
+
+fn parse_primary(input: &str) -> IResult<&str, Expression> {
     alt((
         parse_bool,
         parse_maybe_result_constructors,
