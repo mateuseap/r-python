@@ -65,6 +65,9 @@ pub fn check_func_call(
     exp_vector: Vec<Expression>,
     env: &Environment<Type>,
 ) -> Result<Type, ErrorMessage> {
+    if env.lookup_class(&func_name).is_some() {
+        return check_instantiation(func_name, &exp_vector);
+    }
     let mut actual_arg_types = Vec::new();
     for arg in exp_vector.iter() {
         match arg {
@@ -120,6 +123,55 @@ pub fn check_func_call(
         }
     }
     return Ok(func.kind.clone());
+}
+
+/// `Point()` creates an instance with the default value of each field.
+/// Constructors with arguments are future work.
+fn check_instantiation(class_name: Name, args: &[Expression]) -> Result<Type, ErrorMessage> {
+    if !args.is_empty() {
+        return Err(format!(
+            "[Type Error] class '{}' has no constructor with arguments.",
+            class_name
+        ));
+    }
+    Ok(Type::TClass(class_name))
+}
+
+/// A value of type `actual` can be stored where `expected` is declared. `Any` inside
+/// `actual` stands for a type not known yet, such as `[]` (List[Any]) or `Nothing`.
+pub(crate) fn type_fits(expected: &Type, actual: &Type) -> bool {
+    match (expected, actual) {
+        (_, Type::TAny) => true,
+        (Type::TList(e), Type::TList(a)) | (Type::TMaybe(e), Type::TMaybe(a)) => type_fits(e, a),
+        (Type::TResult(eo, ee), Type::TResult(ao, ae)) => type_fits(eo, ao) && type_fits(ee, ae),
+        (Type::TTuple(es), Type::TTuple(acts)) => {
+            es.len() == acts.len() && es.iter().zip(acts).all(|(e, a)| type_fits(e, a))
+        }
+        _ => expected == actual,
+    }
+}
+
+/// A class name used as a type must name a declared class. ADT names are also
+/// accepted, since the parser reads any identifier in type position as `TClass`.
+pub(crate) fn check_type_is_known(t: &Type, env: &Environment<Type>) -> Result<(), ErrorMessage> {
+    match t {
+        Type::TClass(name)
+            if env.lookup_class(name).is_none() && env.lookup_adt(name).is_none() =>
+        {
+            Err(format!("[Type Error] unknown class '{}'.", name))
+        }
+        Type::TList(inner) | Type::TMaybe(inner) => check_type_is_known(inner, env),
+        Type::TResult(ok, err) => {
+            check_type_is_known(ok, env)?;
+            check_type_is_known(err, env)
+        }
+        Type::TTuple(types) => types.iter().try_for_each(|t| check_type_is_known(t, env)),
+        Type::TFunction(ret, params) => {
+            check_type_is_known(ret, env)?;
+            params.iter().try_for_each(|t| check_type_is_known(t, env))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn check_builtin_signature(

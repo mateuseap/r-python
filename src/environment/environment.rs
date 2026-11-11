@@ -1,4 +1,4 @@
-use crate::ir::ast::{FuncSignature, Function, Name, ValueConstructor};
+use crate::ir::ast::{Class, FuncSignature, Function, Name, ValueConstructor};
 use indexmap::IndexMap;
 use std::collections::{HashMap, LinkedList};
 use std::fmt::Debug;
@@ -9,6 +9,7 @@ pub struct Scope<A> {
     pub functions: HashMap<FuncSignature, Function>,
     pub adts: HashMap<Name, Vec<ValueConstructor>>,
     pub tests: IndexMap<Name, Function>,
+    pub classes: HashMap<Name, Class>,
 }
 
 impl<A: Clone> Scope<A> {
@@ -18,6 +19,7 @@ impl<A: Clone> Scope<A> {
             functions: HashMap::new(),
             adts: HashMap::new(),
             tests: IndexMap::new(),
+            classes: HashMap::new(),
         }
     }
 
@@ -79,6 +81,14 @@ impl<A: Clone> Scope<A> {
     fn lookup_adt(&self, name: &Name) -> Option<&Vec<ValueConstructor>> {
         self.adts.get(name)
     }
+
+    fn map_class(&mut self, class: Class) {
+        self.classes.insert(class.name.clone(), class);
+    }
+
+    fn lookup_class(&self, name: &Name) -> Option<&Class> {
+        self.classes.get(name)
+    }
 }
 
 #[derive(Clone)]
@@ -111,6 +121,10 @@ impl<A: Clone + Debug> Environment<A> {
 
     pub fn set_global_functions(&mut self, global_functions: HashMap<FuncSignature, Function>) {
         self.globals.functions = global_functions;
+    }
+
+    pub fn set_global_classes(&mut self, global_classes: HashMap<Name, Class>) {
+        self.globals.classes = global_classes;
     }
 
     pub fn map_variable(&mut self, var: Name, mutable: bool, value: A) {
@@ -228,6 +242,30 @@ impl<A: Clone + Debug> Environment<A> {
             }
         }
         self.globals.lookup_adt(name)
+    }
+
+    pub fn map_class(&mut self, class: Class) {
+        match self.stack.front_mut() {
+            None => self.globals.map_class(class),
+            Some(top) => top.map_class(class),
+        }
+    }
+
+    pub fn lookup_class(&self, name: &Name) -> Option<&Class> {
+        for scope in self.stack.iter() {
+            if let Some(class) = scope.lookup_class(name) {
+                return Some(class);
+            }
+        }
+        self.globals.lookup_class(name)
+    }
+
+    pub fn get_all_classes(&self) -> HashMap<Name, Class> {
+        let mut all_classes = self.globals.classes.clone();
+        for scope in self.stack.iter().rev() {
+            all_classes.extend(scope.classes.clone());
+        }
+        all_classes
     }
 
     pub fn scoped_function(&self) -> bool {
