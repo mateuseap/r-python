@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Type checker de classes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Design tokens. Cores oficiais do Manual de Identidade Visual
+   CIn-UFPE (ago. 2020): vermelho #DB1E2F (primária), vermelho
+   escuro #AF0421, preto #231F20, cinza claro #E0E1E0.
+   Tipografia institucional é Proxima Nova (licenciada); Figtree
+   é usada como substituta aberta de mesmo desenho geométrico.
+   ============================================================ */
+:root {
+  /* colors */
+  --cin-red: #DB1E2F;
+  --cin-red-dark: #AF0421;
+  --cin-black: #231F20;
+  --cin-gray: #E0E1E0;
+  --paper: #FFFFFF;
+  --paper-2: #F3F3F2;
+  --ink: var(--cin-black);
+  --ink-2: #5B5657;
+  --ink-3: #8C8788;
+  --line: var(--cin-gray);
+  --hl-now: rgba(219, 30, 47, .10);
+  --red-tint: #FBEDEE;
+  --hl-done: rgba(35, 31, 32, .06);
+  --code-bg: #FAFAF9;
+
+  /* typography */
+  --font-sans: "Figtree", "Proxima Nova", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --fs-display: 112px;
+  --fs-h1: 64px;
+  --fs-h2: 40px;
+  --fs-lead: 30px;
+  --fs-body: 25px;
+  --fs-small: 19px;
+  --fs-code: 21px;
+  --lh-tight: 1.04;
+  --lh-body: 1.42;
+
+  /* spacing (8px grid) */
+  --sp-1: 8px; --sp-2: 16px; --sp-3: 24px; --sp-4: 32px;
+  --sp-6: 48px; --sp-8: 64px; --sp-10: 80px; --sp-12: 96px;
+
+  /* radius: código e painéis têm canto; estrutura é reta */
+  --r-0: 0; --r-1: 4px; --r-2: 10px;
+
+  /* motion */
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --dur-1: 160ms; --dur-2: 320ms; --dur-3: 560ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; }
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--cin-black);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- stage 16:9, escalado para qualquer tela ---------- */
+.viewport { position: fixed; inset: 0; }
+.deck {
+  position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px;
+  transform: translate(-50%, -50%) scale(var(--scale, 1)); transform-origin: center;
+  background: var(--paper);
+  overflow: hidden;
+}
+.slide {
+  position: absolute; inset: 0;
+  padding: var(--sp-10) var(--sp-12) var(--sp-12);
+  display: flex; flex-direction: column;
+  opacity: 0; visibility: hidden;
+  transform: translateX(24px);
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out), visibility 0s linear var(--dur-2);
+}
+.slide.active { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.slide.past { transform: translateX(-24px); }
+
+/* faixa vermelha à esquerda: assinatura visual recorrente */
+.slide::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
+  background: var(--cin-red);
+}
+.slide.inverse { background: var(--cin-black); color: #fff; }
+.slide.inverse::before { background: var(--cin-red); }
+.slide.dark { background: var(--cin-black); color: #fff; }
+
+/* ---------- tipografia ---------- */
+h1 { font-size: var(--fs-h1); line-height: var(--lh-tight); font-weight: 800; letter-spacing: -.02em; max-width: 22ch; }
+h2 { font-size: var(--fs-h2); line-height: 1.12; font-weight: 700; letter-spacing: -.01em; }
+.display { font-size: var(--fs-display); line-height: .98; font-weight: 800; letter-spacing: -.035em; }
+.lead { font-size: var(--fs-lead); line-height: 1.34; color: var(--ink-2); max-width: 46ch; }
+.inverse .lead, .dark .lead { color: rgba(255,255,255,.86); }
+p, li { font-size: var(--fs-body); line-height: var(--lh-body); }
+.small { font-size: var(--fs-small); color: var(--ink-3); }
+.inverse .small, .dark .small { color: rgba(255,255,255,.7); }
+code, pre, .mono, .callstack, .ast, .grammar, .term { font-family: var(--font-mono); font-variant-ligatures: none; }
+p code, li code, td code { font-size: .86em; background: var(--paper-2); padding: 1px 6px; border-radius: var(--r-1); }
+.inverse p code, .dark p code, .dark li code { background: rgba(255,255,255,.12); }
+strong { font-weight: 700; }
+.red { color: var(--cin-red); }
+
+.head { margin-bottom: var(--sp-6); }
+.head .kicker { font-size: var(--fs-small); color: var(--cin-red); font-weight: 600; margin-bottom: var(--sp-2); }
+.inverse .head .kicker { color: #FF6B78; }
+
+/* ---------- layout helpers ---------- */
+.grow { flex: 1; min-height: 0; }
+.cols { display: grid; gap: var(--sp-8); grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; }
+.cols.w-60 { grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); }
+.cols.w-40 { grid-template-columns: minmax(0,1fr) minmax(0,1.4fr); }
+.stack > * + * { margin-top: var(--sp-3); }
+ul.clean { list-style: none; padding: 0; }
+ul.clean li { padding-left: 28px; position: relative; }
+ul.clean li + li { margin-top: var(--sp-2); }
+ul.clean li::before { content: ""; position: absolute; left: 0; top: .62em; width: 12px; height: 3px; background: var(--cin-red); }
+.inverse ul.clean li::before { background: var(--cin-red); }
+
+/* ---------- code ---------- */
+pre.code {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--r-2);
+  padding: var(--sp-3) var(--sp-4); font-size: var(--fs-code); line-height: 1.5;
+  white-space: pre; overflow: hidden; color: var(--ink);
+}
+pre.code.sm { font-size: 18px; line-height: 1.45; }
+pre.code.xs { font-size: 16px; line-height: 1.4; }
+.dark pre.code { background: #2E2A2B; border-color: #3B3637; color: #F2F2F2; }
+.k { color: var(--cin-red-dark); font-weight: 600; }   /* keyword */
+.t { color: #1F5FA8; }                                  /* type */
+.s { color: #2F7A3E; }                                  /* string */
+.c { color: var(--ink-3); font-style: italic; }         /* comment */
+.n { color: #8A4B00; }                                  /* number */
+.add { background: rgba(219,30,47,.09); box-shadow: inset 4px 0 0 var(--cin-red); display: inline-block; width: 100%; }
+.dark .k { color: #FF6B78; } .dark .t { color: #8CC4FF; } .dark .s { color: #9BDB9F; } .dark .c { color: #A59FA0; } .dark .n { color: #FFC07A; }
+
+/* ---------- pipeline ---------- */
+.pipeline { display: flex; align-items: stretch; gap: 0; margin-top: var(--sp-4); }
+.stage {
+  flex: 1; border: 2px solid var(--ink); padding: var(--sp-3);
+  position: relative; background: var(--paper);
+  transition: opacity var(--dur-2), background var(--dur-2), color var(--dur-2), border-color var(--dur-2);
+}
+.stage + .stage { border-left: none; }
+.stage h3 { font-size: 28px; font-weight: 700; }
+.stage p { font-size: var(--fs-small); color: var(--ink-2); margin-top: 6px; line-height: 1.35; }
+.stage .file { font-family: var(--font-mono); font-size: 15px; color: var(--ink-3); margin-top: var(--sp-2); }
+.stage.focus { background: var(--red-tint); color: var(--ink); border-color: var(--cin-red); box-shadow: inset 0 6px 0 var(--cin-red); }
+.stage.focus p, .stage.focus .file { color: var(--ink-2); }
+.stage.dim { opacity: .32; }
+.pipeline.flow .stage::after {
+  content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px;
+  background: inherit; border-top: 2px solid; border-right: 2px solid; border-color: inherit;
+  transform: translateY(-50%) rotate(45deg); z-index: 2;
+}
+.pipeline.flow .stage:last-child::after { display: none; }
+
+/* ---------- steps (fragmentos) ---------- */
+[data-at] { transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+[data-at]:not(.shown) { opacity: 0; transform: translateY(8px); }
+.only { display: none; }
+.only.on { display: block; animation: fadein var(--dur-2) var(--ease-out); }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- parser tracer ---------- */
+.tracer { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,.95fr) minmax(0,1.2fr); gap: var(--sp-4); flex: 1; min-height: 0; }
+.tracer .pane { display: flex; flex-direction: column; min-height: 0; }
+.pane-title { font-size: var(--fs-small); font-weight: 700; color: var(--ink-2); margin-bottom: var(--sp-2); display: flex; justify-content: space-between; }
+.pane-title .mono { font-weight: 400; color: var(--ink-3); font-size: 16px; }
+.tracer pre.code { flex: 1; font-size: 20px; }
+.seg { border-radius: 3px; transition: background var(--dur-2), color var(--dur-2), box-shadow var(--dur-2); }
+.seg.done { background: var(--hl-done); color: var(--ink-3); }
+.seg.done .k, .seg.done .t, .seg.done .n, .seg.done .s { color: inherit; }
+.seg.now { background: var(--hl-now); box-shadow: 0 2px 0 var(--cin-red); color: var(--ink); }
+.callstack { background: var(--cin-black); color: #fff; border-radius: var(--r-2); padding: var(--sp-3); flex: 1; font-family: var(--font-mono); font-size: 17px; line-height: 1.5; overflow: hidden; }
+.callstack .frame { display: block; padding-left: calc(var(--d, 0) * 18px); color: rgba(255,255,255,.62); }
+.callstack .frame.top { color: #fff; }
+.callstack .frame.top::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--cin-red); margin-right: 8px; vertical-align: middle; }
+.callstack .note { font-family: var(--font-sans); font-size: 19px; line-height: 1.4; color: rgba(255,255,255,.9); margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid rgba(255,255,255,.18); }
+.ast { background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-3); flex: 1; font-family: var(--font-mono); font-size: 18px; line-height: 1.5; overflow: hidden; }
+.ast .ln { display: block; white-space: pre; transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out), background var(--dur-3); border-radius: 3px; }
+.ast .ln:not(.shown) { opacity: 0; transform: translateX(-10px); }
+.ast .ln.fresh { background: var(--hl-now); }
+.ast .ty { color: var(--cin-red-dark); font-weight: 600; }
+
+/* ---------- tabelas ---------- */
+table { border-collapse: collapse; width: 100%; font-size: var(--fs-small); }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.35; }
+th { font-weight: 700; color: var(--ink-2); border-bottom: 2px solid var(--ink); }
+td.ok { color: #1E6B35; font-weight: 700; }
+td.no { color: var(--ink-3); }
+
+/* ---------- PR cards ---------- */
+.prs { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
+.pr { border-top: 4px solid var(--cin-red); background: var(--paper-2); padding: var(--sp-4); border-radius: 0 0 var(--r-2) var(--r-2); }
+.pr.muted { border-top-color: var(--ink-3); }
+.pr .id { font-family: var(--font-mono); font-size: 18px; color: var(--ink-3); }
+.pr h3 { font-size: 26px; margin: 8px 0 var(--sp-2); line-height: 1.2; }
+.pr li { font-size: 19px; line-height: 1.4; }
+
+/* ---------- capa ---------- */
+.cover { justify-content: space-between; }
+.cover .meta { display: flex; justify-content: space-between; align-items: end; font-size: var(--fs-small); }
+.cover .bar { height: 12px; width: 240px; background: var(--cin-red); margin-bottom: var(--sp-6); }
+
+/* ---------- chrome: progresso, contador, controles ---------- */
+.chrome { position: absolute; left: 12px; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; padding: 0 var(--sp-6) 0 var(--sp-12); gap: var(--sp-3); z-index: 10; pointer-events: none; }
+.chrome .where { font-size: 16px; color: var(--ink-3); flex: 1; }
+.chrome .count { font-family: var(--font-mono); font-size: 16px; color: var(--ink-2); }
+.chrome button { pointer-events: auto; background: none; border: 1px solid var(--line); color: var(--ink-2); width: 40px; height: 40px; border-radius: var(--r-1); font: 600 18px var(--font-sans); cursor: pointer; display: grid; place-items: center; transition: background var(--dur-1), color var(--dur-1); }
+.chrome button:hover { background: var(--cin-red); color: #fff; border-color: var(--cin-red); }
+.chrome button:focus-visible { outline: 3px solid var(--cin-red); outline-offset: 2px; }
+.deck.on-color .chrome .where, .deck.on-color .chrome .count { color: rgba(255,255,255,.8); }
+.deck.on-color .chrome button { color: #fff; border-color: rgba(255,255,255,.4); }
+.progress { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(35,31,32,.08); z-index: 11; }
+.progress i { display: block; height: 100%; width: 0; background: var(--cin-red); transition: width var(--dur-3) var(--ease-in-out); }
+.deck.on-color .progress i { background: var(--cin-red); }
+.steps-dots { display: flex; gap: 6px; }
+.steps-dots b { width: 8px; height: 8px; border-radius: 50%; background: var(--line); transition: background var(--dur-1); }
+.steps-dots b.on { background: var(--cin-red); }
+
+/* ---------- misc ---------- */
+.callout { border-left: 6px solid var(--cin-red); padding: var(--sp-2) var(--sp-3); background: var(--paper-2); font-size: var(--fs-body); line-height: 1.4; }
+.grammar { font-family: var(--font-mono); font-size: 22px; line-height: 1.7; }
+.grammar .nt { color: var(--cin-red-dark); font-weight: 600; }
+.grammar .lit { background: var(--paper-2); padding: 0 6px; border-radius: 3px; }
+.grammar .new { box-shadow: inset 4px 0 0 var(--cin-red); padding-left: 16px; display: block; background: rgba(219,30,47,.05); }
+.grammar .old { padding-left: 16px; display: block; color: var(--ink-3); }
+.term { background: var(--cin-black); color: #EDEDED; border-radius: var(--r-2); padding: var(--sp-3) var(--sp-4); font: 19px/1.55 var(--font-mono); white-space: pre; }
+.term .p { color: #FF6B78; }
+.term .ok { color: #9BDB9F; }
+.term .err { color: #FFB4BB; }
+.big-num { font-size: 96px; font-weight: 800; letter-spacing: -.03em; line-height: 1; color: var(--cin-red); }
+.num-label { font-size: var(--fs-small); color: var(--ink-2); margin-top: 8px; }
+.ladder { font-family: var(--font-mono); font-size: 20px; }
+.ladder div { padding: 8px 14px; border-left: 3px solid var(--line); }
+.ladder div.hot { border-left-color: var(--cin-red); background: rgba(219,30,47,.07); font-weight: 600; }
+.ladder div span { color: var(--ink-3); font-family: var(--font-sans); font-size: 17px; margin-left: 10px; }
+</style>
+</head>
+<body>
+<div class="viewport">
+<main class="deck" id="deck" aria-live="polite">
+
+<!-- 1. Capa -->
+<section class="slide inverse cover" data-title="Capa">
+  <div>
+    <div class="bar" aria-hidden="true"></div>
+    <div class="display">Classes no<br>RPython</div>
+    <p class="lead" style="margin-top:var(--sp-4)">Fase 2: o type checker passa a entender classes.</p>
+  </div>
+  <div class="meta">
+    <span>Compiladores<br>Centro de Informática, UFPE</span>
+    <span class="small">Use as setas, Espaço ou PageUp/PageDown. F para tela cheia.</span>
+  </div>
+</section>
+
+<!-- 2. Onde paramos -->
+<section class="slide" data-title="Onde paramos" data-steps="1">
+  <div class="head"><div class="kicker">Recapitulando a fase 1</div><h1>O parser já monta a AST de uma classe</h1></div>
+  <div class="pipeline flow">
+    <div class="stage"><h3>Texto .rpy</h3><p>Programa lido como texto</p><div class="file">src/main.rs</div></div>
+    <div class="stage"><h3>Parser</h3><p>Fase 1: reconhece <code>class</code>, <code>obj.campo</code> e <code>obj.metodo()</code></p><div class="file">src/parser/</div></div>
+    <div class="stage" data-focus="1"><h3>Type checker</h3><p>Fase 2: decide se o programa é bem tipado</p><div class="file">src/type_checker/</div></div>
+    <div class="stage" data-dim="1"><h3>Interpretador</h3><p>Fase 3: executar classes</p><div class="file">src/interpreter/</div></div>
+  </div>
+  <div class="cols" style="margin-top:var(--sp-6)">
+    <p class="lead">Ao fim da fase 1, tudo depois do parser recusava classes com "not supported yet".</p>
+    <p class="lead" data-at="1">Agora o type checker aceita programas com classes e rejeita os mal tipados, antes de qualquer execução.</p>
+  </div>
+</section>
+
+<!-- 3. Como o type checker funciona -->
+<section class="slide" data-title="Como o type checker funciona">
+  <div class="head"><div class="kicker">Antes da mudança</div><h1>Duas funções e um ambiente</h1></div>
+  <div class="cols w-60 grow">
+    <table>
+      <thead><tr><th style="width:24%">Função</th><th style="width:30%">Recebe</th><th>Devolve</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">check_expr</td><td>uma expressão e o ambiente</td><td>o <strong>tipo</strong> da expressão, ou um erro</td></tr>
+        <tr><td class="mono">check_stmt</td><td>um statement e o ambiente</td><td>um <strong>novo ambiente</strong>, ou um erro</td></tr>
+      </tbody>
+    </table>
+    <div class="stack">
+      <p>O <strong>ambiente</strong> guarda o que já foi declarado: variáveis com tipo e mutabilidade, funções e ADTs.</p>
+      <pre class="code sm"><span class="k">val</span> p = Point();   <span class="c">// adiciona p : Point</span>
+<span class="k">val</span> px = p.x;     <span class="c">// usa p : Point</span></pre>
+      <p class="small">O programa é checado statement por statement, passando o ambiente adiante. O primeiro erro interrompe a checagem.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Gaps -->
+<section class="slide" data-title="O que faltava">
+  <div class="head"><div class="kicker">Lacunas</div><h1>O que o type checker não sabia fazer</h1></div>
+  <table>
+    <thead><tr><th style="width:9%">Gap</th><th style="width:46%">Problema</th><th>Solução</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">GAP-01</td><td><code>ClassDef</code> era sempre rejeitado</td><td><code>check_class_def_stmt</code></td></tr>
+      <tr><td class="mono">GAP-02</td><td>O ambiente não tinha onde guardar classes</td><td>Mapa <code>classes</code> no <code>Environment</code></td></tr>
+      <tr><td class="mono">GAP-03</td><td><code>Point()</code> virava "função nunca declarada"</td><td><code>check_instantiation</code></td></tr>
+      <tr><td class="mono">GAP-04</td><td><code>obj.campo</code> e <code>obj.metodo()</code> eram rejeitados</td><td><code>lookup_field</code> e <code>check_method_call</code></td></tr>
+      <tr><td class="mono">GAP-05</td><td><code>obj.campo = expr</code> era rejeitado</td><td><code>check_field_assignment_stmt</code></td></tr>
+      <tr><td class="mono">GAP-06</td><td>Qualquer nome virava tipo: <code>Itn</code> passava sem erro</td><td><code>check_type_is_known</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 5. Ambiente -->
+<section class="slide" data-title="O ambiente ganha classes">
+  <div class="head"><div class="kicker">src/environment/environment.rs</div><h1>O ambiente ganha um lugar para classes</h1></div>
+  <div class="cols w-60 grow">
+<pre class="code sm"><span class="k">pub struct</span> <span class="t">Scope</span>&lt;A&gt; {
+    <span class="k">pub</span> variables: HashMap&lt;Name, (bool, A)&gt;,
+    <span class="k">pub</span> functions: HashMap&lt;FuncSignature, Function&gt;,
+    <span class="k">pub</span> adts: HashMap&lt;Name, Vec&lt;ValueConstructor&gt;&gt;,
+    <span class="k">pub</span> tests: IndexMap&lt;Name, Function&gt;,
+<span class="add">    <span class="k">pub</span> classes: HashMap&lt;Name, Class&gt;,</span>
+}</pre>
+    <div class="stack">
+      <p>Mesmo padrão que já existia para ADTs e funções:</p>
+      <ul class="clean">
+        <li><code>map_class</code>: registra</li>
+        <li><code>lookup_class</code>: procura do escopo mais interno ao global</li>
+        <li><code>get_all_classes</code>: copia todas</li>
+      </ul>
+      <p class="small">O corpo de uma função é checado num ambiente novo. Sem copiar as classes para ele, uma função não enxergaria <code>Point</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Checando uma declaração de classe -->
+<section class="slide" data-title="Checando uma classe" data-steps="4" data-tracer="t1">
+  <div class="head" style="margin-bottom:var(--sp-4)"><div class="kicker">Passo a passo</div><h2>Como o type checker verifica uma declaração de classe</h2></div>
+  <div class="tracer" id="t1" style="grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
+    <div class="pane">
+      <div class="pane-title">Entrada</div>
+<pre class="code" style="font-size:19px"><span class="seg" data-on="1"><span class="k">class</span> Counter:</span>
+    <span class="seg" data-on="2"><span class="k">var</span> n: <span class="t">Int</span> = <span class="n">0</span>;</span>
+    <span class="seg" data-on="2"><span class="k">val</span> step: <span class="t">Int</span> = <span class="n">1</span>;</span>
+    <span class="seg" data-on="3"><span class="k">def</span> get(self: Counter) -&gt; <span class="t">Int</span></span>:
+        <span class="seg" data-on="4"><span class="k">return</span> self.n;</span>
+    <span class="k">end</span>;
+    <span class="seg" data-on="3"><span class="k">def</span> twice(self: Counter) -&gt; <span class="t">Int</span></span>:
+        <span class="seg" data-on="4"><span class="k">return</span> self.get() + self.get();</span>
+    <span class="k">end</span>;
+<span class="k">end</span></pre>
+    </div>
+    <div class="pane">
+      <div class="pane-title">check_class_def_stmt</div>
+      <div class="callstack">
+        <div class="only" data-only="0"><span class="frame top">check_stmt</span><div class="note">O statement é um <code>ClassDef</code>, que antes era recusado. Agora vai para <code>check_class_def_stmt</code>.</div></div>
+        <div class="only" data-only="1"><span class="frame top">1. a classe é nova?</span><div class="note"><code>Counter</code> não pode já existir. Ela é registrada <strong>antes</strong> dos membros, para que eles possam citá-la (<code>self: Counter</code>).</div></div>
+        <div class="only" data-only="2"><span class="frame top">2. campos</span><div class="note">Nomes não repetidos, tipo conhecido e valor inicial compatível: <code>0</code> é <code>Int</code>, como declarado.</div></div>
+        <div class="only" data-only="3"><span class="frame top">3. assinaturas dos métodos</span><div class="note">Nomes não repetidos, e o primeiro parâmetro tem que ser exatamente <code>self: Counter</code>.</div></div>
+        <div class="only" data-only="4"><span class="frame top">4. corpos dos métodos</span><div class="note">Só depois de conhecer <strong>todas</strong> as assinaturas. Por isso <code>twice</code> pode chamar <code>get</code>, e a ordem dos métodos não importa.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. Point() -->
+<section class="slide" data-title="Instanciação">
+  <div class="head"><div class="kicker">src/type_checker/expression_type_checker.rs</div><h1><code style="background:none;padding:0;font-size:.9em">Point()</code> continua sendo uma chamada de função</h1></div>
+  <div class="cols grow">
+    <div class="stack">
+      <p>Para o parser, <code>Point()</code> e <code>f()</code> são iguais: um <code>FuncCall</code>. Ele não tem como saber se <code>Point</code> é uma classe.</p>
+      <p>O type checker tem essa informação no ambiente. Então <code>check_func_call</code> desvia quando o nome é uma classe:</p>
+<pre class="code sm"><span class="k">if</span> env.lookup_class(&amp;func_name).is_some() {
+    <span class="k">return</span> check_instantiation(func_name, &amp;exp_vector);
+}</pre>
+    </div>
+    <div class="stack">
+      <table>
+        <thead><tr><th>Expressão</th><th>Resultado</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">Point()</td><td class="ok">TClass("Point")</td></tr>
+          <tr><td class="mono">Point(1)</td><td class="no">erro: construtor com argumentos não existe</td></tr>
+          <tr><td class="mono">Pont()</td><td class="no">erro: não é classe nem função</td></tr>
+        </tbody>
+      </table>
+      <p class="small">Sem nó <code>New</code> e sem mudar o parser. Construtor com argumentos fica para depois.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 8. Tipos de classe e type_fits -->
+<section class="slide" data-title="Tipos conhecidos">
+  <div class="head"><div class="kicker">Dois ajustes de tipo</div><h1>Nome de classe precisa existir, e <code style="background:none;padding:0;font-size:.85em">[]</code> cabe em <code style="background:none;padding:0;font-size:.85em">List[Int]</code></h1></div>
+  <div class="cols grow">
+    <div class="stack">
+      <h2>check_type_is_known</h2>
+      <p>O parser lê qualquer nome em posição de tipo como <code>TClass</code>. A fase 1 deixava passar erro de digitação:</p>
+<pre class="code sm"><span class="k">def</span> origin(p: Pont) -&gt; <span class="t">Int</span>: ...</pre>
+      <div class="term">[Type Error] unknown class 'Pont'.</div>
+      <p class="small">Vale para parâmetros, retornos e campos, inclusive dentro de <code>List</code>, <code>Maybe</code> e tuplas.</p>
+    </div>
+    <div class="stack">
+      <h2>type_fits</h2>
+      <p><code>[]</code> tem tipo <code>List[Any]</code> e <code>Nothing</code> tem tipo <code>Maybe[Any]</code>. Comparando por igualdade, nenhum dos dois caberia num campo:</p>
+<pre class="code sm"><span class="k">var</span> itens: <span class="t">List[Int]</span> = [];
+<span class="k">var</span> melhor: <span class="t">Maybe[Int]</span> = Nothing;</pre>
+      <p class="small"><code>type_fits</code> aceita <code>Any</code> dentro do tipo encontrado e, fora isso, exige o mesmo tipo.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 9. Acesso a campo e chamada de método -->
+<section class="slide" data-title="Acesso a membros">
+  <div class="head"><div class="kicker">src/type_checker/expression_type_checker.rs</div><h1>O ponto exige uma instância de classe</h1></div>
+  <div class="cols grow">
+    <div class="stack">
+      <h2><code style="background:none;padding:0">obj.campo</code></h2>
+      <ul class="clean">
+        <li>O tipo de <code>obj</code> tem que ser uma classe</li>
+        <li>A classe tem que declarar o campo</li>
+        <li>Resultado: o tipo declarado do campo</li>
+      </ul>
+<pre class="code sm">c.n          <span class="c">// Int</span>
+c.z          <span class="c">// erro: Counter não tem campo z</span>
+(<span class="n">1</span>).n        <span class="c">// erro: só instâncias têm campos</span></pre>
+    </div>
+    <div class="stack">
+      <h2><code style="background:none;padding:0">obj.metodo(args)</code></h2>
+      <ul class="clean">
+        <li>A classe tem que declarar o método</li>
+        <li><code>self</code> já é <code>obj</code>: os argumentos se comparam com os parâmetros <strong>depois</strong> de <code>self</code></li>
+        <li>Resultado: o tipo de retorno do método</li>
+      </ul>
+<pre class="code sm">c.add(<span class="n">2</span>)     <span class="c">// Unit</span>
+c.add()      <span class="c">// erro: espera 1 argumento</span>
+c.add(True)  <span class="c">// erro: espera Int</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- 10. Atribuição a campo -->
+<section class="slide" data-title="Atribuição a campo">
+  <div class="head"><div class="kicker">src/type_checker/statement_type_checker.rs</div><h1>Só campo declarado com <code style="background:none;padding:0">var</code> pode mudar</h1></div>
+  <div class="cols w-60 grow">
+<pre class="code sm"><span class="k">class</span> Account:
+    <span class="k">val</span> id: <span class="t">Int</span> = <span class="n">1</span>;
+    <span class="k">var</span> balance: <span class="t">Int</span> = <span class="n">0</span>;
+<span class="k">end</span>;
+
+<span class="k">val</span> a = Account();
+a.balance = <span class="n">100</span>;     <span class="c">// ok: balance é var</span>
+a.balance = <span class="s">"cem"</span>;   <span class="c">// erro: espera Int</span>
+a.id = <span class="n">2</span>;            <span class="c">// erro: id é val</span></pre>
+    <div class="stack">
+      <p><code>check_field_assignment_stmt</code> confere três coisas: o campo existe, é <code>var</code> e recebe um valor do tipo certo.</p>
+      <div class="callout">A mutabilidade é <strong>do campo</strong>, não da variável. <code>a</code> é <code>val</code>, mas <code>a.balance = 100</code> é aceito: a variável continua apontando para o mesmo objeto, só o campo muda.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 11. Tracer: point_full -->
+<section class="slide" data-title="Exemplo da proposta" data-steps="5" data-tracer="t2">
+  <div class="head" style="margin-bottom:var(--sp-4)"><div class="kicker">examples/classes/point_full.rpy</div><h2>O programa da proposta, statement por statement</h2></div>
+  <div class="tracer" id="t2" style="grid-template-columns:minmax(0,1.1fr) minmax(0,.85fr) minmax(0,1fr)">
+    <div class="pane">
+      <div class="pane-title">Programa</div>
+<pre class="code" style="font-size:15px;line-height:1.45"><span class="seg" data-on="1"><span class="k">class</span> Point:
+    <span class="k">var</span> x: <span class="t">Int</span> = <span class="n">0</span>;
+    <span class="k">var</span> y: <span class="t">Int</span> = <span class="n">0</span>;
+    <span class="k">def</span> init(self: Point,
+             x: <span class="t">Int</span>, y: <span class="t">Int</span>) -&gt; <span class="t">Unit</span>:
+        self.x = x;
+        self.y = y;
+    <span class="k">end</span>;
+    <span class="k">def</span> get_x(self: Point) -&gt; <span class="t">Int</span>:
+        <span class="k">return</span> self.x;
+    <span class="k">end</span>;
+<span class="k">end</span></span>;
+<span class="seg" data-on="2"><span class="k">val</span> p = Point()</span>;
+<span class="seg" data-on="3">p.init(<span class="n">3</span>, <span class="n">4</span>)</span>;
+<span class="seg" data-on="4"><span class="k">val</span> px = p.get_x()</span>;
+<span class="seg" data-on="5">assert(px == <span class="n">3</span>, <span class="s">"..."</span>)</span>;</pre>
+    </div>
+    <div class="pane">
+      <div class="pane-title">Verificação</div>
+      <div class="callstack">
+        <div class="only" data-only="0"><span class="frame top">ambiente vazio</span><div class="note">O type checker começa sem nada declarado.</div></div>
+        <div class="only" data-only="1"><span class="frame top">check_class_def_stmt</span><div class="note">Campos ok. No corpo de <code>init</code>, <code>self.x = x</code>: <code>x</code> é <code>var Int</code> e recebe <code>Int</code>. <code>get_x</code> devolve <code>self.x : Int</code>.</div></div>
+        <div class="only" data-only="2"><span class="frame top">check_instantiation</span><div class="note"><code>Point</code> é classe e não há argumentos: o tipo é <code>Point</code>.</div></div>
+        <div class="only" data-only="3"><span class="frame top">check_method_call</span><div class="note"><code>init</code> espera <code>(Int, Int)</code> depois de <code>self</code>. Recebe <code>(Int, Int)</code>.</div></div>
+        <div class="only" data-only="4"><span class="frame top">check_method_call</span><div class="note"><code>get_x</code> não tem argumentos além de <code>self</code> e devolve <code>Int</code>.</div></div>
+        <div class="only" data-only="5"><span class="frame top">check_assert</span><div class="note"><code>px == 3</code> é <code>Boolean</code>. Nenhum erro: o programa é bem tipado.</div></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="pane-title">Ambiente</div>
+      <div class="ast" style="font-size:17px">
+<span class="ln" data-at="1"><span class="ty">Point</span>: x, y : var Int</span><span class="ln" data-at="1">       init, get_x</span><span class="ln" data-at="2"><span class="ty">p</span>  : val Point</span><span class="ln" data-at="4"><span class="ty">px</span> : val Int</span><span class="ln" data-at="5">programa bem tipado</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12. Erros -->
+<section class="slide" data-title="Erros detectados">
+  <div class="head"><div class="kicker">examples/classes/type_errors/</div><h1>Cinco programas, cinco erros pegos antes de executar</h1></div>
+  <table>
+    <thead><tr><th style="width:30%">Programa</th><th style="width:30%">O que está errado</th><th>Mensagem</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">wrong_self_type.rpy</td><td><code>def area(self: Int)</code></td><td class="mono">first parameter of method 'area' must be 'self: Square'</td></tr>
+      <tr><td class="mono">unknown_type.rpy</td><td><code>p: Pont</code></td><td class="mono">unknown class 'Pont'</td></tr>
+      <tr><td class="mono">missing_field.rpy</td><td><code>p.z</code></td><td class="mono">class 'Point' has no field 'z'</td></tr>
+      <tr><td class="mono">val_field_assignment.rpy</td><td><code>a.id = 2</code></td><td class="mono">field 'id' of class 'Account' is a val and cannot be reassigned</td></tr>
+      <tr><td class="mono">wrong_argument.rpy</td><td><code>c.add("dois")</code></td><td class="mono">argument 1 of method 'add' expects Int, found String</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:var(--sp-4)">Um método sem <code>self</code> nem chega aqui: o parser da fase 1 já o rejeita. O que só o type checker pega é <code>self</code> com o tipo errado.</p>
+</section>
+
+<!-- 13. Demo -->
+<section class="slide dark" data-title="Demonstração">
+  <div class="head"><div class="kicker" style="color:#FF6B78">examples/typecheck.rs</div><h1>Checando um programa sem executá-lo</h1></div>
+  <div class="term"><span class="p">$</span> cargo run --example typecheck -- examples/classes/point_full.rpy
+<span class="ok">examples/classes/point_full.rpy: ok, the program is well typed</span>
+
+<span class="p">$</span> cargo run --example typecheck -- examples/classes/type_errors/missing_field.rpy
+<span class="err">[Type Error] class 'Point' has no field 'z'.</span>
+
+<span class="p">$</span> cargo test --test type_checker_classes_tests
+<span class="ok">test result: ok. 57 passed; 0 failed</span></div>
+  <p class="lead" style="margin-top:var(--sp-4)">O <code>cargo run</code> não chama o type checker, e o interpretador ainda não executa classes. Por isso a demonstração usa um runner próprio.</p>
+</section>
+
+<!-- 14. Decisões -->
+<section class="slide" data-title="Decisões de projeto">
+  <div class="head"><div class="kicker">Por que assim</div><h1>Decisões de projeto</h1></div>
+  <table>
+    <thead><tr><th style="width:30%">Decisão</th><th>Motivo</th></tr></thead>
+    <tbody>
+      <tr><td><code>self</code> não é palavra reservada</td><td>Reservar quebraria <code>self: Point</code> e <code>self.x</code> no parser. As regras de <code>self</code> ficam no type checker.</td></tr>
+      <tr><td>O parser aceita <code>.campo</code> em qualquer expressão</td><td>Restringir no parser quebraria <code>f().y</code>. O type checker rejeita ponto em quem não é classe.</td></tr>
+      <tr><td><code>Point()</code> segue como <code>FuncCall</code></td><td>Saber se o nome é classe é informação semântica. O type checker consulta o ambiente, sem nó novo.</td></tr>
+      <tr><td>Assinaturas antes dos corpos</td><td>Permite que um método chame outro declarado mais abaixo.</td></tr>
+      <tr><td>Namespace único</td><td>Classe, variável e função não podem ter o mesmo nome: <code>Point()</code> precisa ser inequívoco.</td></tr>
+      <tr><td>Defaults fechados</td><td>Campo não captura variável/função externa e não constrói diretamente a própria classe.</td></tr>
+      <tr><td>Type checker fora do <code>cargo run</code></td><td>Os exemplos antigos redeclaram <code>_</code> várias vezes, e o type checker trata isso como erro.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 15. Testes -->
+<section class="slide" data-title="Testes">
+  <div class="head" style="margin-bottom:var(--sp-4)"><div class="kicker">tests/type_checker_classes_tests.rs</div><h1>Cada regra tem um caso válido e um inválido</h1></div>
+  <div class="cols w-40 grow">
+    <div class="stack">
+      <div><div class="big-num">57</div><div class="num-label">testes novos, escritos em RPython e passados pelo parser</div></div>
+      <div><div class="big-num" style="color:var(--ink)">0</div><div class="num-label">regressões: a suíte inteira, com 693 testes, continua passando</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Módulo</th><th>O que verifica</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">class_declaration</td><td>duplicatas, inicializador, tipo desconhecido, <code>Point()</code>, <code>[]</code> e <code>Nothing</code></td></tr>
+        <tr><td class="mono">edge_cases</td><td>namespace, defaults fechados, ciclo direto, retornos <code>Nothing</code>/<code>[]</code>, <code>return</code> fora de função</td></tr>
+        <tr><td class="mono">methods</td><td><code>self</code> certo e errado, corpo checado, método não vira função global</td></tr>
+        <tr><td class="mono">field_access</td><td>tipo do campo, campo inexistente, ponto em não-classe, encadeamento</td></tr>
+        <tr><td class="mono">method_call</td><td>retorno, <code>self</code> implícito, quantidade e tipo de argumentos</td></tr>
+        <tr><td class="mono">field_assignment</td><td><code>var</code> aceito, <code>val</code> rejeitado, tipo errado, <code>self.campo = v</code></td></tr>
+        <tr><td class="mono">exemplos</td><td>os dois exemplos válidos tipam; os cinco inválidos falham com a mensagem certa</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 16. PRs -->
+<section class="slide" data-title="Divisão dos PRs">
+  <div class="head"><div class="kicker">Rastreabilidade</div><h1>Quatro PRs pequenos, em sequência</h1></div>
+  <div class="prs" style="grid-template-columns:repeat(4,1fr)">
+    <div class="pr">
+      <div class="id">PR #6, GAP-01 a 03 e 06</div>
+      <h3>Declaração e instanciação</h3>
+      <ul class="clean"><li>Classes no ambiente</li><li><code>check_class_def_stmt</code></li><li><code>Point()</code> e tipos conhecidos</li></ul>
+    </div>
+    <div class="pr">
+      <div class="id">PR #7, GAP-04 e 05</div>
+      <h3>Acesso a membros</h3>
+      <ul class="clean"><li><code>obj.campo</code></li><li><code>obj.metodo(args)</code></li><li><code>obj.campo = expr</code></li></ul>
+    </div>
+    <div class="pr">
+      <div class="id">PR #8</div>
+      <h3>Demonstração</h3>
+      <ul class="clean"><li>Runner <code>typecheck</code></li><li>Cinco programas inválidos</li></ul>
+    </div>
+    <div class="pr muted">
+      <div class="id">PR #9</div>
+      <h3>Documentação</h3>
+      <ul class="clean"><li>Guia da fase 2</li><li>Estes slides</li></ul>
+    </div>
+  </div>
+  <p class="small" style="margin-top:var(--sp-6)">Detalhes em docs/TYPE_CHECKER_GUIDE.md.</p>
+</section>
+
+<!-- 17. Fora do escopo -->
+<section class="slide dark" data-title="Fora desta etapa">
+  <div class="head"><div class="kicker" style="color:#FF6B78">Future work</div><h1>O type checker aceita. O interpretador ainda recusa.</h1></div>
+  <div class="cols grow">
+    <ul class="clean">
+      <li>Executar classes: instâncias em runtime, campos e métodos</li>
+      <li>Construtor com argumentos e o nó <code>New</code></li>
+      <li>Herança, sobrescrita e visibilidade</li>
+      <li>Ligar o type checker ao <code>cargo run</code></li>
+      <li>Pretty print completo de classes</li>
+    </ul>
+    <div class="stack">
+      <p class="lead">Rodar um programa com classe ainda termina assim:</p>
+      <div class="term" style="background:#2E2A2B"><span class="p">$</span> cargo run -- examples/classes/point_full.rpy
+Erro em tempo de execução: not implemented yet</div>
+    </div>
+  </div>
+</section>
+
+<!-- 18. Próximos passos -->
+<section class="slide inverse" data-title="Próximos passos">
+  <div class="head"><div class="kicker">Depois desta fase</div><h1>Próximos passos</h1></div>
+  <div class="pipeline flow" style="margin-top:var(--sp-4)">
+    <div class="stage" style="color:var(--ink)"><h3>1. Interpretador</h3><p>Representar instâncias e executar campos e métodos</p></div>
+    <div class="stage" style="color:var(--ink)"><h3>2. Construtor</h3><p><code>Point(1, 2)</code> com argumentos</p></div>
+    <div class="stage" style="color:var(--ink)"><h3>3. Herança</h3><p><code>class B : A</code> e sobrescrita</p></div>
+    <div class="stage" style="color:var(--ink)"><h3>4. Integração</h3><p>Type checker no <code>cargo run</code></p></div>
+  </div>
+  <p class="lead" style="margin-top:var(--sp-8)">Com o type checker pronto, o interpretador pode assumir que todo programa que chega até ele é bem tipado.</p>
+</section>
+
+<nav class="chrome" aria-label="Navegação">
+  <span class="where" id="where"></span>
+  <span class="steps-dots" id="dots" aria-hidden="true"></span>
+  <span class="count" id="count"></span>
+  <button id="prev" aria-label="Slide anterior">&#8249;</button>
+  <button id="next" aria-label="Próximo slide">&#8250;</button>
+  <button id="fs" aria-label="Tela cheia">&#x26F6;</button>
+</nav>
+<div class="progress" aria-hidden="true"><i id="bar"></i></div>
+</main>
+</div>
+
+<script>
+(() => {
+  const deck = document.getElementById('deck');
+  const slides = [...deck.querySelectorAll('.slide')];
+  const $ = id => document.getElementById(id);
+  let i = 0, step = 0;
+
+  const fit = () => deck.style.setProperty('--scale', Math.min(innerWidth / 1600, innerHeight / 900));
+  addEventListener('resize', fit); fit();
+
+  const stepsOf = s => +(s.dataset.steps || 0);
+
+  function paint() {
+    slides.forEach((s, k) => {
+      s.classList.toggle('active', k === i);
+      s.classList.toggle('past', k < i);
+    });
+    const s = slides[i];
+    s.querySelectorAll('[data-at]').forEach(el => {
+      const at = +el.dataset.at;
+      el.classList.toggle('shown', step >= at);
+      el.classList.toggle('fresh', step === at && step > 0);
+    });
+    s.querySelectorAll('[data-only]').forEach(el => el.classList.toggle('on', +el.dataset.only === step));
+    s.querySelectorAll('.seg').forEach(el => {
+      const on = +el.dataset.on;
+      el.classList.toggle('now', on === step);
+      el.classList.toggle('done', on < step);
+    });
+    s.querySelectorAll('[data-focus]').forEach(el => el.classList.toggle('focus', step >= +el.dataset.focus));
+    s.querySelectorAll('[data-dim]').forEach(el => el.classList.toggle('dim', step >= +el.dataset.dim));
+
+    deck.classList.toggle('on-color', s.classList.contains('inverse') || s.classList.contains('dark'));
+    $('where').textContent = s.dataset.title || '';
+    $('count').textContent = `${i + 1} / ${slides.length}`;
+    $('bar').style.width = `${((i + (stepsOf(s) ? step / (stepsOf(s) + 1) : 0)) / (slides.length - 1)) * 100}%`;
+    const n = stepsOf(s);
+    $('dots').innerHTML = n ? Array.from({length: n + 1}, (_, k) => `<b class="${k <= step ? 'on' : ''}"></b>`).join('') : '';
+    try { history.replaceState(null, '', `#${i + 1}` + (step ? `.${step}` : '')); } catch (e) {}
+  }
+
+  function go(to, toStep = 0) {
+    i = Math.max(0, Math.min(slides.length - 1, to));
+    step = Math.max(0, Math.min(stepsOf(slides[i]), toStep));
+    paint();
+  }
+  const next = () => step < stepsOf(slides[i]) ? (step++, paint()) : (i < slides.length - 1 && go(i + 1));
+  const prev = () => step > 0 ? (step--, paint()) : (i > 0 && go(i - 1, stepsOf(slides[i - 1])));
+
+  function toggleFs() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    else document.exitFullscreen?.();
+  }
+
+  addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'PageDown': case ' ': case 'ArrowDown': e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp': case 'ArrowUp': e.preventDefault(); prev(); break;
+      case 'Home': go(0); break;
+      case 'End': go(slides.length - 1); break;
+      case 'f': case 'F': toggleFs(); break;
+    }
+  });
+  $('next').onclick = next; $('prev').onclick = prev; $('fs').onclick = toggleFs;
+  document.addEventListener('fullscreenchange', () => $('fs').setAttribute('aria-label', document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia'));
+
+  // clique na metade direita avança, esquerda volta (útil com apresentador remoto)
+  deck.addEventListener('click', e => {
+    if (e.target.closest('button')) return;
+    const r = deck.getBoundingClientRect();
+    (e.clientX - r.left > r.width / 2 ? next : prev)();
+  });
+
+  const m = location.hash.match(/^#(\d+)(?:\.(\d+))?$/);
+  go(m ? +m[1] - 1 : 0, m && m[2] ? +m[2] : 0);
+})();
+</script>
+</body>
+</html>
