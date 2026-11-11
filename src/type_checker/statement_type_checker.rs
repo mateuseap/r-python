@@ -2,9 +2,10 @@ use std::collections::HashSet;
 
 use crate::environment::environment::Environment;
 use crate::ir::ast::{
-    Expression, FormalArgument, FuncSignature, Function, Name, Statement, Type, ValueConstructor,
+    Class, Expression, FormalArgument, FuncSignature, Function, Name, Statement, Type,
+    ValueConstructor,
 };
-use crate::type_checker::expression_type_checker::check_expr;
+use crate::type_checker::expression_type_checker::{check_expr, check_type_is_known, type_fits};
 
 type ErrorMessage = String;
 
@@ -33,10 +34,7 @@ pub fn check_stmt(
             "[Type Error] field assignment is not supported yet ('.{}')",
             field
         )),
-        Statement::ClassDef(class) => Err(format!(
-            "[Type Error] classes are not supported yet (class '{}')",
-            class.name
-        )),
+        Statement::ClassDef(class) => check_class_def_stmt(class, env),
         Statement::Block(statements_vector) => check_block_statement(statements_vector, env),
         Statement::Return(exp) => check_return_stmt(exp, env),
         Statement::Break => Ok(env.clone()),
@@ -157,6 +155,12 @@ fn check_var_declaration_stmt(
 ) -> Result<Environment<Type>, ErrorMessage> {
     let mut new_env = env.clone();
     let var_type = new_env.lookup(&name);
+    if new_env.lookup_class(&name).is_some() {
+        return Err(format!(
+            "[Type Error] variable '{}' conflicts with class '{}'.",
+            name, name
+        ));
+    }
     let exp_type = check_expr(*exp, &new_env)?;
 
     if var_type.is_none() {
@@ -177,6 +181,12 @@ fn check_val_declaration_stmt(
 ) -> Result<Environment<Type>, ErrorMessage> {
     let mut new_env = env.clone();
     let var_type = new_env.lookup(&name);
+    if new_env.lookup_class(&name).is_some() {
+        return Err(format!(
+            "[Type Error] variable '{}' conflicts with class '{}'.",
+            name, name
+        ));
+    }
     let exp_type = check_expr(*exp, &new_env)?;
 
     if var_type.is_none() {
@@ -329,12 +339,24 @@ fn check_func_def_stmt(
     function: Function,
     env: &Environment<Type>,
 ) -> Result<Environment<Type>, ErrorMessage> {
+    if env.lookup_class(&function.name).is_some() {
+        return Err(format!(
+            "[Type Error] function '{}' conflicts with class '{}'.",
+            function.name, function.name
+        ));
+    }
+    for arg in &function.params {
+        check_type_is_known(&arg.argument_type, env)?;
+    }
+    check_type_is_known(&function.kind, env)?;
+
     let mut new_env = Environment::new();
     let func_signature = FuncSignature::from_func(&function);
     //new_env.push(); -> Push and pop will happen in check_block_statement
     new_env.set_current_func(&func_signature);
     // Previous environment functions and the formal parameters are regarded as global
     new_env.set_global_functions(env.get_all_functions());
+    new_env.set_global_classes(env.get_all_classes());
 
     // Ensure that each function is defined only once in current scope
     let current_scope = env.get_current_scope();
@@ -395,6 +417,188 @@ fn check_func_def_stmt(
     Ok(final_env) // if function body is ok, return original env with new function
 }
 
+fn field_initializer_is_closed(exp: &Expression, env: &Environment<Type>) -> bool {
+    match exp {
+        Expression::Var(_) | Expression::Lambda(_) => false,
+        Expression::FuncCall(name, args) => {
+            env.lookup_class(name).is_some()
+                && args.iter().all(|e| field_initializer_is_closed(e, env))
+        }
+        Expression::Add(l, r)
+        | Expression::Sub(l, r)
+        | Expression::Mul(l, r)
+        | Expression::Div(l, r)
+        | Expression::And(l, r)
+        | Expression::Or(l, r)
+        | Expression::EQ(l, r)
+        | Expression::NEQ(l, r)
+        | Expression::GT(l, r)
+        | Expression::LT(l, r)
+        | Expression::GTE(l, r)
+        | Expression::LTE(l, r) => {
+            field_initializer_is_closed(l, env) && field_initializer_is_closed(r, env)
+        }
+        Expression::Not(e)
+        | Expression::COk(e)
+        | Expression::CErr(e)
+        | Expression::CJust(e)
+        | Expression::Unwrap(e)
+        | Expression::IsError(e)
+        | Expression::IsNothing(e)
+        | Expression::Propagate(e) => field_initializer_is_closed(e, env),
+        Expression::FieldAccess(_, _) | Expression::MethodCall(_, _, _) => false,
+        Expression::ListValue(items) | Expression::Tuple(items) => {
+            items.iter().all(|e| field_initializer_is_closed(e, env))
+        }
+        Expression::Constructor(_, args) => {
+            args.iter().all(|e| field_initializer_is_closed(e, env))
+        }
+        Expression::CTrue
+        | Expression::CFalse
+        | Expression::CInt(_)
+        | Expression::CReal(_)
+        | Expression::CString(_)
+        | Expression::CVoid
+        | Expression::CNothing => true,
+    }
+}
+
+fn expression_constructs_class(exp: &Expression, class_name: &Name) -> bool {
+    match exp {
+        Expression::FuncCall(name, args) => {
+            name == class_name
+                || args
+                    .iter()
+                    .any(|e| expression_constructs_class(e, class_name))
+        }
+        Expression::Add(l, r)
+        | Expression::Sub(l, r)
+        | Expression::Mul(l, r)
+        | Expression::Div(l, r)
+        | Expression::And(l, r)
+        | Expression::Or(l, r)
+        | Expression::EQ(l, r)
+        | Expression::NEQ(l, r)
+        | Expression::GT(l, r)
+        | Expression::LT(l, r)
+        | Expression::GTE(l, r)
+        | Expression::LTE(l, r) => {
+            expression_constructs_class(l, class_name) || expression_constructs_class(r, class_name)
+        }
+        Expression::Not(e)
+        | Expression::COk(e)
+        | Expression::CErr(e)
+        | Expression::CJust(e)
+        | Expression::Unwrap(e)
+        | Expression::IsError(e)
+        | Expression::IsNothing(e)
+        | Expression::Propagate(e)
+        | Expression::FieldAccess(e, _) => expression_constructs_class(e, class_name),
+        Expression::MethodCall(obj, _, args) => {
+            expression_constructs_class(obj, class_name)
+                || args
+                    .iter()
+                    .any(|e| expression_constructs_class(e, class_name))
+        }
+        Expression::ListValue(items) | Expression::Tuple(items) => items
+            .iter()
+            .any(|e| expression_constructs_class(e, class_name)),
+        Expression::Constructor(_, args) => args
+            .iter()
+            .any(|e| expression_constructs_class(e, class_name)),
+        Expression::Lambda(_) => false,
+        Expression::CTrue
+        | Expression::CFalse
+        | Expression::CInt(_)
+        | Expression::CReal(_)
+        | Expression::CString(_)
+        | Expression::CVoid
+        | Expression::Var(_)
+        | Expression::CNothing => false,
+    }
+}
+
+fn check_class_def_stmt(
+    class: Class,
+    env: &Environment<Type>,
+) -> Result<Environment<Type>, ErrorMessage> {
+    if env.lookup_class(&class.name).is_some() {
+        return Err(format!(
+            "[Type Error] class '{}' is already declared.",
+            class.name
+        ));
+    }
+    if let Some(existing) = env.lookup_var_or_func(&class.name) {
+        let kind = match existing {
+            crate::environment::environment::FuncOrVar::Var(_) => "variable",
+            crate::environment::environment::FuncOrVar::Func(_) => "function",
+        };
+        return Err(format!(
+            "[Type Error] class '{}' conflicts with {} '{}'.",
+            class.name, kind, class.name
+        ));
+    }
+    let mut new_env = env.clone();
+    // Registered before its members, so fields and methods can mention the class itself.
+    new_env.map_class(class.clone());
+
+    let mut field_names = HashSet::new();
+    for field in &class.fields {
+        if !field_names.insert(field.name.clone()) {
+            return Err(format!(
+                "[Type Error] field '{}' is declared more than once in class '{}'.",
+                field.name, class.name
+            ));
+        }
+        check_type_is_known(&field.field_type, &new_env)?;
+        if !field_initializer_is_closed(&field.initializer, &new_env) {
+            return Err(format!(
+                "[Type Error] field initializer for '{}.{}' must be closed.",
+                class.name, field.name
+            ));
+        }
+        if expression_constructs_class(&field.initializer, &class.name) {
+            return Err(format!(
+                "[Type Error] recursive field initializer for '{}.{}' cannot construct '{}'.",
+                class.name, field.name, class.name
+            ));
+        }
+        let init_type = check_expr(*field.initializer.clone(), &new_env)?;
+        if !type_fits(&field.field_type, &init_type) {
+            return Err(format!(
+                "[Type Error] field '{}' of class '{}' expects {}, found {}.",
+                field.name, class.name, field.field_type, init_type
+            ));
+        }
+    }
+
+    let self_type = Type::TClass(class.name.clone());
+    let mut method_names = HashSet::new();
+    for method in &class.methods {
+        if !method_names.insert(method.name.clone()) {
+            return Err(format!(
+                "[Type Error] method '{}' is declared more than once in class '{}'.",
+                method.name, class.name
+            ));
+        }
+        match method.params.first() {
+            Some(first) if first.argument_name == "self" && first.argument_type == self_type => {}
+            _ => {
+                return Err(format!(
+                    "[Type Error] first parameter of method '{}' must be 'self: {}'.",
+                    method.name, class.name
+                ))
+            }
+        }
+    }
+    // Bodies are checked after every signature is known. Methods are not global
+    // functions, so the environment returned by each check is discarded.
+    for method in &class.methods {
+        check_func_def_stmt(method.clone(), &new_env)?;
+    }
+    Ok(new_env)
+}
+
 fn check_adt_declarations_stmt(
     name: Name,
     cons: Vec<ValueConstructor>,
@@ -411,7 +615,9 @@ fn check_return_stmt(
 ) -> Result<Environment<Type>, ErrorMessage> {
     let new_env = env.clone();
 
-    assert!(new_env.scoped_function());
+    if !new_env.scoped_function() {
+        return Err("[Type Error] return outside function.".to_string());
+    }
 
     let ret_type = check_expr(*exp, &new_env)?;
 
@@ -423,13 +629,10 @@ fn check_return_stmt(
 
     let current_func = current_func.unwrap();
 
-    if ret_type != current_func.kind {
+    if !type_fits(&current_func.kind, &ret_type) {
         return Err(format!(
-            "Error in function {}:
-        Actual return type cannot be different from formal return type \n
-        Actual return type: {:?} \n
-        Formal return type: {:?}",
-            env.current_func, ret_type, current_func.kind
+            "[Type Error] return type of function '{}' expects {}, found {}.",
+            current_func.name, current_func.kind, ret_type
         ));
     }
     return Ok(new_env);
