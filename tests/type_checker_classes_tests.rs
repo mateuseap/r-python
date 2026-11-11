@@ -444,3 +444,29 @@ fn declaration_example_type_checks() {
     let src = std::fs::read_to_string("examples/classes/point_declaration.rpy").unwrap();
     assert!(check(&src).is_ok(), "{:?}", check(&src).err());
 }
+
+/// Each program in examples/classes/type_errors must fail with its expected message.
+#[test]
+fn type_error_examples_fail_with_expected_messages() {
+    let cases = [
+        (
+            "wrong_self_type.rpy",
+            "first parameter of method 'area' must be 'self: Square'",
+        ),
+        ("unknown_type.rpy", "unknown class 'Pont'"),
+        ("missing_field.rpy", "class 'Point' has no field 'z'"),
+        (
+            "val_field_assignment.rpy",
+            "field 'id' of class 'Account' is a val",
+        ),
+        (
+            "wrong_argument.rpy",
+            "argument 1 of method 'add' expects Int, found String",
+        ),
+    ];
+    for (file, needle) in cases {
+        let src = std::fs::read_to_string(format!("examples/classes/type_errors/{file}"))
+            .unwrap_or_else(|e| panic!("{file}: {e}"));
+        assert_error_mentions(check(&src), needle);
+    }
+}
