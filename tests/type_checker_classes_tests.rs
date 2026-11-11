@@ -438,3 +438,9 @@ fn proposal_example_type_checks() {
     let src = std::fs::read_to_string("examples/classes/point_full.rpy").unwrap();
     assert!(check(&src).is_ok(), "{:?}", check(&src).err());
 }
+
+#[test]
+fn declaration_example_type_checks() {
+    let src = std::fs::read_to_string("examples/classes/point_declaration.rpy").unwrap();
+    assert!(check(&src).is_ok(), "{:?}", check(&src).err());
+}
