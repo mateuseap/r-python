@@ -5,7 +5,9 @@ use crate::ir::ast::{
     Class, Expression, FormalArgument, FuncSignature, Function, Name, Statement, Type,
     ValueConstructor,
 };
-use crate::type_checker::expression_type_checker::{check_expr, check_type_is_known, type_fits};
+use crate::type_checker::expression_type_checker::{
+    check_expr, check_type_is_known, lookup_field, type_fits,
+};
 
 type ErrorMessage = String;
 
@@ -30,10 +32,9 @@ pub fn check_stmt(
         Statement::FuncDef(function) => check_func_def_stmt(function, env),
         Statement::TypeDeclaration(name, cons) => check_adt_declarations_stmt(name, cons, env),
         // Classes are parsed only; type checking them is future work.
-        Statement::FieldAssignment(_, field, _) => Err(format!(
-            "[Type Error] field assignment is not supported yet ('.{}')",
-            field
-        )),
+        Statement::FieldAssignment(obj, field, exp) => {
+            check_field_assignment_stmt(*obj, field, *exp, env)
+        }
         Statement::ClassDef(class) => check_class_def_stmt(class, env),
         Statement::Block(statements_vector) => check_block_statement(statements_vector, env),
         Statement::Return(exp) => check_return_stmt(exp, env),
@@ -516,6 +517,32 @@ fn expression_constructs_class(exp: &Expression, class_name: &Name) -> bool {
         | Expression::Var(_)
         | Expression::CNothing => false,
     }
+}
+
+/// `obj.field = exp`: the field must exist, be declared with `var`, and receive a
+/// value of its declared type. Mutability belongs to the field, not to the binding
+/// holding `obj`, so `val p = Point(); p.x = 1` is accepted when `x` is a var.
+fn check_field_assignment_stmt(
+    obj: Expression,
+    field: Name,
+    exp: Expression,
+    env: &Environment<Type>,
+) -> Result<Environment<Type>, ErrorMessage> {
+    let (class, decl) = lookup_field(&obj, &field, env)?;
+    if !decl.mutable {
+        return Err(format!(
+            "[Type Error] field '{}' of class '{}' is a val and cannot be reassigned.",
+            field, class.name
+        ));
+    }
+    let exp_type = check_expr(exp, env)?;
+    if !type_fits(&decl.field_type, &exp_type) {
+        return Err(format!(
+            "[Type Error] field '{}' of class '{}' expects {}, found {}.",
+            field, class.name, decl.field_type, exp_type
+        ));
+    }
+    Ok(env.clone())
 }
 
 fn check_class_def_stmt(

@@ -3,10 +3,11 @@ class Point:
     var y: Int = 0;
 
     def translate(self: Point, dx: Int, dy: Int) -> Unit:
-        x = x + dx;
+        self.x = self.x + dx;
+        self.y = self.y + dy;
     end;
 
     def get_x(self: Point) -> Int:
-        return 0;
+        return self.x;
     end;
 end

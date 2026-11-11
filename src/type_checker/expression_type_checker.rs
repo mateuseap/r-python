@@ -1,5 +1,5 @@
 use crate::environment::environment::{Environment, FuncOrVar};
-use crate::ir::ast::{Expression, FuncSignature, Function, Name, Type};
+use crate::ir::ast::{Class, Expression, FieldDeclaration, FuncSignature, Function, Name, Type};
 type ErrorMessage = String;
 
 pub fn check_expr(exp: Expression, env: &Environment<Type>) -> Result<Type, ErrorMessage> {
@@ -40,11 +40,8 @@ pub fn check_expr(exp: Expression, env: &Environment<Type>) -> Result<Type, Erro
         }
         Expression::Lambda(func) => check_lambda(&func),
         Expression::Constructor(name, args) => check_adt_constructor(name, args, env),
-        // Member access is parsed only; type checking it is future work.
-        Expression::FieldAccess(_, name) | Expression::MethodCall(_, name, _) => Err(format!(
-            "[Type Error] member access is not supported yet ('.{}')",
-            name
-        )),
+        Expression::FieldAccess(obj, field) => Ok(lookup_field(&*obj, &field, env)?.1.field_type),
+        Expression::MethodCall(obj, method, args) => check_method_call(*obj, method, args, env),
     }
 }
 
@@ -123,6 +120,84 @@ pub fn check_func_call(
         }
     }
     return Ok(func.kind.clone());
+}
+
+/// Resolves `obj.field`: `obj` must be an instance and its class must declare `field`.
+pub(crate) fn lookup_field(
+    obj: &Expression,
+    field: &Name,
+    env: &Environment<Type>,
+) -> Result<(Class, FieldDeclaration), ErrorMessage> {
+    let class = class_of(obj, env, "fields")?;
+    match class.fields.iter().find(|f| &f.name == field) {
+        Some(decl) => Ok((class.clone(), decl.clone())),
+        None => Err(format!(
+            "[Type Error] class '{}' has no field '{}'.",
+            class.name, field
+        )),
+    }
+}
+
+/// The class of an expression whose static type is `TClass`.
+fn class_of(
+    obj: &Expression,
+    env: &Environment<Type>,
+    members: &str,
+) -> Result<Class, ErrorMessage> {
+    match check_expr(obj.clone(), env)? {
+        Type::TClass(name) => env
+            .lookup_class(&name)
+            .cloned()
+            .ok_or_else(|| format!("[Type Error] unknown class '{}'.", name)),
+        other => Err(format!(
+            "[Type Error] only class instances have {}, found {}.",
+            members, other
+        )),
+    }
+}
+
+/// `obj.method(args)`: `self` is bound to `obj`, so the arguments are matched
+/// against the method parameters after `self`.
+fn check_method_call(
+    obj: Expression,
+    method: Name,
+    args: Vec<Expression>,
+    env: &Environment<Type>,
+) -> Result<Type, ErrorMessage> {
+    let class = class_of(&obj, env, "methods")?;
+    let decl = class
+        .methods
+        .iter()
+        .find(|m| m.name == method)
+        .ok_or_else(|| {
+            format!(
+                "[Type Error] class '{}' has no method '{}'.",
+                class.name, method
+            )
+        })?;
+    // Every method starts with `self` (checked at declaration), so skip it here.
+    let params = decl.params.get(1..).unwrap_or(&[]);
+    if params.len() != args.len() {
+        return Err(format!(
+            "[Type Error] method '{}' expects {} argument(s), found {}.",
+            method,
+            params.len(),
+            args.len()
+        ));
+    }
+    for (i, (param, arg)) in params.iter().zip(args).enumerate() {
+        let arg_type = check_expr(arg, env)?;
+        if !type_fits(&param.argument_type, &arg_type) {
+            return Err(format!(
+                "[Type Error] argument {} of method '{}' expects {}, found {}.",
+                i + 1,
+                method,
+                param.argument_type,
+                arg_type
+            ));
+        }
+    }
+    Ok(decl.kind.clone())
 }
 
 /// `Point()` creates an instance with the default value of each field.

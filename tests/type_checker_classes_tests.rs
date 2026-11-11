@@ -278,3 +278,169 @@ mod declaration_edge_cases {
         assert_error_mentions(check("return 1"), "return outside function");
     }
 }
+const COUNTER: &str = "class Counter:
+    var n: Int = 0;
+    val step: Int = 1;
+    def get(self: Counter) -> Int: return self.n; end;
+    def add(self: Counter, k: Int) -> Unit: self.n = self.n + k; end;
+    def twice(self: Counter) -> Int: return self.get() + self.get(); end;
+end";
+
+mod field_access {
+    use super::*;
+
+    #[test]
+    fn field_access_has_the_field_type() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_eq!(type_of(&decls, "c.n"), Ok(Type::TInteger));
+    }
+
+    #[test]
+    fn field_access_on_an_instantiation() {
+        assert_eq!(type_of(COUNTER, "Counter().step"), Ok(Type::TInteger));
+    }
+
+    #[test]
+    fn field_access_composes_with_arithmetic() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_eq!(type_of(&decls, "c.n + 1"), Ok(Type::TInteger));
+    }
+
+    #[test]
+    fn missing_field_is_rejected() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_error_mentions(type_of(&decls, "c.z"), "class 'Counter' has no field 'z'");
+    }
+
+    #[test]
+    fn field_access_on_non_class_is_rejected() {
+        assert_error_mentions(
+            type_of("val i = 1", "i.n"),
+            "only class instances have fields",
+        );
+    }
+
+    #[test]
+    fn chained_field_access_through_another_class() {
+        let src = "class A: var v: Int = 1; end; class B: var a: A = A(); end; val b = B()";
+        assert_eq!(type_of(src, "b.a.v"), Ok(Type::TInteger));
+    }
+}
+
+mod method_call {
+    use super::*;
+
+    #[test]
+    fn method_call_has_the_return_type() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_eq!(type_of(&decls, "c.get()"), Ok(Type::TInteger));
+    }
+
+    #[test]
+    fn method_call_does_not_pass_self_explicitly() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_eq!(type_of(&decls, "c.add(2)"), Ok(Type::TVoid));
+    }
+
+    #[test]
+    fn method_can_call_another_method_through_self() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_eq!(type_of(&decls, "c.twice()"), Ok(Type::TInteger));
+    }
+
+    #[test]
+    fn missing_method_is_rejected() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_error_mentions(
+            type_of(&decls, "c.reset()"),
+            "class 'Counter' has no method 'reset'",
+        );
+    }
+
+    #[test]
+    fn wrong_argument_count_is_rejected() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_error_mentions(
+            type_of(&decls, "c.add()"),
+            "method 'add' expects 1 argument(s), found 0",
+        );
+    }
+
+    #[test]
+    fn wrong_argument_type_is_rejected() {
+        let decls = format!("{COUNTER}; val c = Counter()");
+        assert_error_mentions(
+            type_of(&decls, "c.add(True)"),
+            "argument 1 of method 'add' expects Int, found Boolean",
+        );
+    }
+
+    #[test]
+    fn method_call_on_non_class_is_rejected() {
+        assert_error_mentions(
+            type_of("val i = 1", "i.get()"),
+            "only class instances have methods",
+        );
+    }
+
+    #[test]
+    fn method_body_using_missing_field_is_rejected() {
+        let src = "class C: def get(self: C) -> Int: return self.z; end; end";
+        assert_error_mentions(check(src), "class 'C' has no field 'z'");
+    }
+}
+
+mod field_assignment {
+    use super::*;
+
+    #[test]
+    fn assigning_a_var_field_is_accepted() {
+        let src = format!("{COUNTER}; val c = Counter(); c.n = 5");
+        assert!(check(&src).is_ok());
+    }
+
+    #[test]
+    fn assigning_a_val_field_is_rejected() {
+        let src = format!("{COUNTER}; val c = Counter(); c.step = 5");
+        assert_error_mentions(check(&src), "field 'step' of class 'Counter' is a val");
+    }
+
+    #[test]
+    fn assigning_a_wrong_type_is_rejected() {
+        let src = format!("{COUNTER}; val c = Counter(); c.n = True");
+        assert_error_mentions(
+            check(&src),
+            "field 'n' of class 'Counter' expects Int, found Boolean",
+        );
+    }
+
+    #[test]
+    fn assigning_a_missing_field_is_rejected() {
+        let src = format!("{COUNTER}; val c = Counter(); c.z = 1");
+        assert_error_mentions(check(&src), "class 'Counter' has no field 'z'");
+    }
+
+    #[test]
+    fn assigning_through_self_inside_a_method_is_accepted() {
+        let src = "class C: var n: Int = 0; def set(self: C, v: Int) -> Unit: self.n = v; end; end";
+        assert!(check(src).is_ok());
+    }
+
+    #[test]
+    fn val_binding_does_not_freeze_var_fields() {
+        let src = format!("{COUNTER}; val c = Counter(); c.n = 1; c.n = 2");
+        assert!(check(&src).is_ok());
+    }
+}
+
+#[test]
+fn proposal_example_type_checks() {
+    let src = std::fs::read_to_string("examples/classes/point_full.rpy").unwrap();
+    assert!(check(&src).is_ok(), "{:?}", check(&src).err());
+}
+
+#[test]
+fn declaration_example_type_checks() {
+    let src = std::fs::read_to_string("examples/classes/point_declaration.rpy").unwrap();
+    assert!(check(&src).is_ok(), "{:?}", check(&src).err());
+}
